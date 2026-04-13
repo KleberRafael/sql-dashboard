@@ -1,4 +1,4 @@
-﻿<!DOCTYPE html>
+<!DOCTYPE html>
 <html lang="pt-BR">
 <head>
 <meta charset="UTF-8">
@@ -1037,12 +1037,12 @@ function renderConexoes(){
   document.getElementById('tb-cn').innerHTML=D.conexoes.filter(r=>r.met.startsWith('ip_')).map(r=>{
     const ip=r.met.replace('ip_','');
     const cn=r.val.match(/conexoes=(\d+)/)?.[1]||'0';
-    const sl=r.val.match(/sleeping=(\d+)/)?.[1]||'0';
+    const sleeping=r.val.match(/sleeping=(\d+)/)?.[1]||'0';
     const ru=r.val.match(/running=(\d+)/)?.[1]||'0';
     const pg=r.det.match(/prog=([^\s]+)/)?.[1]||'—';
     const ln=r.det.match(/login=([^\s]+)/)?.[1]||'—';
     return`<tr><td class="mono">${ip}</td><td class="mono">${cn}</td>
-      <td class="mono">${sl}</td><td class="mono">${ru}</td>
+      <td class="mono">${sleeping}</td><td class="mono">${ru}</td>
       <td class="mono trunc">${pg}</td><td class="mono">${ln}</td>
       <td>${bdg(sc(r.sts),sl(r.sts))}</td></tr>`;
   }).join('')||empty(7);

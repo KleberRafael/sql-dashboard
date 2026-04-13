@@ -1,0 +1,1226 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>SQL Server Assessment</title>
+<link href="https://fonts.googleapis.com/css2?family=DM+Mono:wght@400;500&family=Instrument+Serif:ital@0;1&family=DM+Sans:wght@300;400;500;600&display=swap" rel="stylesheet">
+<script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.1/chart.umd.min.js"></script>
+<style>
+:root{
+  --bg:#0c0f13;--bg2:#121720;--bg3:#1a2030;
+  --border:rgba(255,255,255,0.07);--border2:rgba(255,255,255,0.13);
+  --text:#e8eaf0;--muted:#7a8099;
+  --accent:#e8613a;--accent2:#f0a050;--accent3:#7c5cfc;
+  --ok:#2dd98f;--warn:#f5a623;--crit:#ff4d6d;--info:#38bdf8;
+  --grid:rgba(232,97,58,0.03);
+}
+*{box-sizing:border-box;margin:0;padding:0;}
+html{scroll-behavior:smooth;}
+body{background:var(--bg);color:var(--text);font-family:'DM Sans',sans-serif;font-size:14px;line-height:1.6;min-height:100vh;}
+body::before{content:'';position:fixed;inset:0;background-image:linear-gradient(var(--grid) 1px,transparent 1px),linear-gradient(90deg,var(--grid) 1px,transparent 1px);background-size:40px 40px;pointer-events:none;z-index:0;}
+.layout{display:flex;min-height:100vh;position:relative;z-index:1;}
+
+/* SIDEBAR */
+.sb{width:230px;flex-shrink:0;background:var(--bg2);border-right:1px solid var(--border);position:fixed;top:0;left:0;height:100vh;overflow-y:auto;display:flex;flex-direction:column;z-index:10;}
+.sb-logo{padding:20px 18px 14px;border-bottom:1px solid var(--border);}
+.sb-logo .eye{font-family:'DM Mono',monospace;font-size:10px;letter-spacing:.12em;text-transform:uppercase;color:var(--accent);margin-bottom:5px;}
+.sb-logo h2{font-family:'Instrument Serif',serif;font-size:16px;font-weight:400;color:#fff;line-height:1.25;}
+.sb-logo h2 em{font-style:italic;color:var(--accent);}
+.srv-chip{margin-top:9px;background:var(--bg3);border:1px solid var(--border2);border-radius:7px;padding:7px 11px;}
+.srv-chip .sh{font-family:'DM Mono',monospace;font-size:11px;color:var(--text);display:flex;align-items:center;gap:5px;}
+.srv-chip .sh::before{content:'';width:6px;height:6px;border-radius:50%;background:var(--ok);display:inline-block;flex-shrink:0;animation:pulse 2s infinite;}
+@keyframes pulse{0%,100%{opacity:1}50%{opacity:.3}}
+.srv-chip .sv{font-family:'DM Mono',monospace;font-size:10px;color:var(--muted);margin-top:2px;}
+.sb-nav{padding:12px 0;flex:1;}
+.nl{font-family:'DM Mono',monospace;font-size:9px;letter-spacing:.12em;text-transform:uppercase;color:var(--muted);padding:7px 18px 3px;}
+.ni{display:flex;align-items:center;gap:8px;padding:7px 16px;cursor:pointer;transition:background .15s;border-left:2px solid transparent;font-size:12px;color:var(--muted);}
+.ni:hover{background:rgba(255,255,255,.04);color:var(--text);}
+.ni.active{background:rgba(232,97,58,.08);border-left-color:var(--accent);color:var(--accent);}
+.ni.prot{border-left-color:transparent;}
+.ni.prot.active{background:rgba(124,92,252,.08);border-left-color:var(--accent3);color:var(--accent3);}
+.nb{margin-left:auto;font-family:'DM Mono',monospace;font-size:10px;padding:1px 6px;border-radius:99px;background:rgba(255,255,255,.07);color:var(--muted);}
+.nb.c{background:rgba(255,77,109,.15);color:var(--crit);}
+.nb.w{background:rgba(245,166,35,.15);color:var(--warn);}
+.sb-footer{padding:12px 16px;border-top:1px solid var(--border);font-size:10px;color:var(--muted);font-family:'DM Mono',monospace;}
+
+/* MAIN */
+.main{margin-left:230px;flex:1;min-width:0;}
+.topbar{background:var(--bg2);border-bottom:1px solid var(--border);padding:11px 28px;display:flex;align-items:center;justify-content:space-between;gap:12px;position:sticky;top:0;z-index:9;}
+.tb-left div{font-size:13px;font-weight:500;color:#fff;}
+.tb-left span{font-size:11px;color:var(--muted);font-family:'DM Mono',monospace;}
+.tb-chip{display:flex;align-items:center;gap:7px;background:var(--bg3);border:1px solid var(--border2);border-radius:6px;padding:4px 12px;font-family:'DM Mono',monospace;font-size:11px;color:var(--muted);white-space:nowrap;}
+.tb-chip::before{content:'';width:5px;height:5px;border-radius:50%;background:var(--ok);flex-shrink:0;}
+.tb-actions{display:flex;gap:7px;}
+.btn{padding:6px 13px;border-radius:6px;border:none;font-family:'DM Sans',sans-serif;font-size:12px;font-weight:500;cursor:pointer;transition:opacity .2s;}
+.btn-g{background:transparent;color:var(--muted);border:1px solid var(--border2);}
+.btn-g:hover{color:var(--text);}
+.btn-p{background:var(--accent);color:#fff;}
+.btn-p:hover{opacity:.85;}
+.btn-prot{background:var(--accent3);color:#fff;}
+.sbox{background:var(--bg3);border:1px solid var(--border2);border-radius:6px;padding:5px 10px;color:var(--text);font-family:'DM Mono',monospace;font-size:11px;width:170px;outline:none;}
+.sbox:focus{border-color:var(--accent);}
+
+/* PAGES */
+.page{display:none;padding:26px 30px;}
+.page.active{display:block;}
+
+/* KPI */
+.kgrid{display:grid;grid-template-columns:repeat(auto-fit,minmax(145px,1fr));gap:11px;margin-bottom:28px;}
+.kc{background:var(--bg2);border:1px solid var(--border);border-radius:10px;padding:15px 17px;position:relative;overflow:hidden;cursor:pointer;transition:border-color .2s,transform .15s;}
+.kc:hover{border-color:var(--border2);transform:translateY(-2px);}
+.kc::before{content:'';position:absolute;top:0;left:0;right:0;height:2px;background:var(--kc,var(--accent));border-radius:10px 10px 0 0;}
+.kc-label{font-family:'DM Mono',monospace;font-size:9px;letter-spacing:.1em;text-transform:uppercase;color:var(--muted);margin-bottom:6px;}
+.kc-val{font-family:'Instrument Serif',serif;font-size:22px;font-weight:400;line-height:1;color:var(--kc,#fff);}
+.kc-sub{font-size:10px;color:var(--muted);margin-top:4px;}
+.kc-arr{position:absolute;bottom:9px;right:11px;font-size:12px;color:var(--border2);transition:color .15s;}
+.kc:hover .kc-arr{color:var(--kc,var(--accent));}
+
+/* SECTION */
+.sh{display:flex;align-items:center;justify-content:space-between;margin-bottom:12px;gap:10px;flex-wrap:wrap;}
+.st{display:flex;align-items:center;gap:8px;}
+.sn{font-family:'DM Mono',monospace;font-size:10px;color:var(--accent);background:rgba(232,97,58,.1);border:1px solid rgba(232,97,58,.2);border-radius:5px;padding:2px 7px;}
+.sn.prot{color:var(--accent3);background:rgba(124,92,252,.1);border-color:rgba(124,92,252,.2);}
+.sh2{font-size:14px;font-weight:500;color:#fff;}
+.sdesc{font-size:12px;color:var(--muted);margin-bottom:12px;}
+.tools{display:flex;gap:6px;flex-wrap:wrap;align-items:center;}
+.fb{padding:4px 10px;border-radius:5px;border:1px solid var(--border2);background:transparent;color:var(--muted);font-size:11px;cursor:pointer;transition:.15s;font-family:'DM Sans',sans-serif;}
+.fb:hover,.fb.on{background:rgba(232,97,58,.1);color:var(--accent);border-color:rgba(232,97,58,.3);}
+.fb.prot:hover,.fb.prot.on{background:rgba(124,92,252,.1);color:var(--accent3);border-color:rgba(124,92,252,.3);}
+
+/* TABLE */
+.tw{background:var(--bg2);border:1px solid var(--border);border-radius:10px;overflow:hidden;margin-bottom:22px;}
+table{width:100%;border-collapse:collapse;font-size:12px;}
+thead tr{background:var(--bg3);}
+th{text-align:left;padding:8px 12px;font-family:'DM Mono',monospace;font-size:9px;letter-spacing:.07em;text-transform:uppercase;color:var(--muted);font-weight:400;border-bottom:1px solid var(--border);white-space:nowrap;cursor:pointer;user-select:none;}
+th:hover{color:var(--text);}
+td{padding:8px 12px;border-bottom:1px solid var(--border);color:var(--text);vertical-align:middle;}
+tr:last-child td{border-bottom:none;}
+tr.cr{cursor:pointer;}
+tr.cr:hover td{background:rgba(232,97,58,.04);}
+.mono{font-family:'DM Mono',monospace;font-size:11px;}
+.trunc{max-width:200px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;}
+.qcell{max-width:260px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-family:'DM Mono',monospace;font-size:11px;color:var(--muted);}
+
+/* BADGES */
+.bdg{display:inline-flex;align-items:center;gap:3px;padding:2px 7px;border-radius:99px;font-family:'DM Mono',monospace;font-size:9px;letter-spacing:.05em;text-transform:uppercase;font-weight:500;white-space:nowrap;}
+.bdg::before{content:'';width:4px;height:4px;border-radius:50%;background:currentColor;}
+.bok{background:rgba(45,217,143,.1);color:var(--ok);border:1px solid rgba(45,217,143,.2);}
+.bwarn{background:rgba(245,166,35,.1);color:var(--warn);border:1px solid rgba(245,166,35,.2);}
+.bcrit{background:rgba(255,77,109,.1);color:var(--crit);border:1px solid rgba(255,77,109,.2);}
+.binfo{background:rgba(56,189,248,.1);color:var(--info);border:1px solid rgba(56,189,248,.2);}
+.bmut{background:rgba(255,255,255,.05);color:var(--muted);border:1px solid var(--border);}
+.bprot{background:rgba(124,92,252,.1);color:var(--accent3);border:1px solid rgba(124,92,252,.2);}
+
+/* BAR */
+.barw{display:flex;align-items:center;gap:7px;}
+.barbg{flex:1;height:4px;background:var(--bg3);border-radius:99px;overflow:hidden;min-width:40px;}
+.barf{height:100%;border-radius:99px;background:var(--accent);transition:width .5s cubic-bezier(.4,0,.2,1);}
+.barv{font-family:'DM Mono',monospace;font-size:10px;color:var(--muted);min-width:32px;text-align:right;}
+
+/* DIAG */
+.dgrid{display:grid;grid-template-columns:repeat(auto-fit,minmax(220px,1fr));gap:10px;margin-bottom:22px;}
+.di{background:var(--bg2);border:1px solid var(--border);border-radius:8px;padding:12px 14px;display:flex;align-items:center;gap:10px;cursor:pointer;transition:border-color .15s;}
+.di:hover{border-color:var(--border2);}
+.dico{width:30px;height:30px;border-radius:7px;display:flex;align-items:center;justify-content:center;font-size:13px;flex-shrink:0;}
+.dbody{flex:1;min-width:0;}
+.dtitle{font-size:12px;font-weight:500;color:#fff;}
+.dval{font-family:'DM Mono',monospace;font-size:10px;color:var(--muted);margin-top:1px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;}
+
+/* PROTHEUS BANNER */
+.prot-banner{background:rgba(124,92,252,.06);border:1px solid rgba(124,92,252,.2);border-radius:10px;padding:14px 18px;margin-bottom:20px;display:flex;align-items:center;gap:12px;}
+.prot-banner-icon{font-size:24px;flex-shrink:0;}
+.prot-banner h3{font-size:13px;font-weight:500;color:var(--accent3);margin-bottom:2px;}
+.prot-banner p{font-size:12px;color:var(--muted);}
+
+/* MODAL */
+.mov{display:none;position:fixed;inset:0;background:rgba(0,0,0,.75);z-index:100;align-items:center;justify-content:center;padding:18px;}
+.mov.open{display:flex;}
+.modal{background:var(--bg2);border:1px solid var(--border2);border-radius:13px;width:100%;max-width:740px;max-height:88vh;overflow:hidden;display:flex;flex-direction:column;animation:mi .2s ease;}
+@keyframes mi{from{opacity:0;transform:scale(.97)}to{opacity:1;transform:none}}
+.mh{padding:16px 20px;border-bottom:1px solid var(--border);display:flex;align-items:flex-start;justify-content:space-between;gap:10px;}
+.mh h3{font-size:14px;font-weight:500;color:#fff;}
+.ms{font-size:11px;color:var(--muted);margin-top:2px;}
+.mc{background:transparent;border:none;color:var(--muted);font-size:18px;cursor:pointer;padding:1px 5px;border-radius:3px;line-height:1;}
+.mc:hover{color:var(--text);background:var(--bg3);}
+.mb{padding:20px;overflow-y:auto;flex:1;}
+.mg{display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-bottom:16px;}
+.ms2{background:var(--bg3);border-radius:7px;padding:12px 13px;}
+.msl{font-family:'DM Mono',monospace;font-size:9px;color:var(--muted);text-transform:uppercase;letter-spacing:.07em;margin-bottom:3px;}
+.msv{font-size:15px;font-weight:500;color:#fff;}
+.msv.c{color:var(--crit);}.msv.w{color:var(--warn);}.msv.o{color:var(--ok);}
+.qb{background:var(--bg3);border:1px solid var(--border);border-radius:7px;padding:13px;font-family:'DM Mono',monospace;font-size:11px;line-height:1.7;color:var(--info);word-break:break-all;white-space:pre-wrap;margin-bottom:12px;}
+.fl{list-style:none;}
+.fl li{display:flex;gap:8px;padding:7px 0;border-bottom:1px solid var(--border);font-size:12px;color:var(--text);}
+.fl li:last-child{border-bottom:none;}
+.fl li::before{content:'→';color:var(--accent);flex-shrink:0;}
+
+/* TOAST */
+.toast{position:fixed;bottom:22px;right:22px;background:var(--bg3);border:1px solid var(--border2);border-radius:8px;padding:9px 15px;font-size:12px;color:var(--text);z-index:200;display:none;animation:ti .2s ease;}
+@keyframes ti{from{opacity:0;transform:translateY(6px)}to{opacity:1;transform:none}}
+.empty{text-align:center;padding:28px;color:var(--muted);font-size:12px;}
+.empty strong{display:block;font-size:13px;color:var(--text);margin-bottom:4px;}
+textarea{width:100%;min-height:120px;background:var(--bg3);border:1px solid var(--border2);border-radius:7px;color:var(--text);font-family:'DM Mono',monospace;font-size:11px;padding:9px;resize:vertical;outline:none;}
+textarea:focus{border-color:var(--accent);}
+.icard{background:var(--bg2);border:1px solid var(--border);border-radius:9px;padding:15px 17px;margin-bottom:12px;}
+.icard h4{font-size:12px;font-weight:500;color:#fff;margin-bottom:3px;}
+.icard p{font-size:11px;color:var(--muted);margin-bottom:8px;}
+@media print{.sb,.topbar,.mov,.toast{display:none!important;}.main{margin-left:0;}.page{display:block!important;padding:10px;}body::before{display:none;}}
+</style>
+</head>
+<body>
+<div class="layout">
+
+<!-- SIDEBAR -->
+<aside class="sb">
+  <div class="sb-logo">
+    <div class="eye">SQL Server Assessment</div>
+    <h2><em>SQL Server</em><br>Health Report</h2>
+    <div class="srv-chip">
+      <div class="sh" id="s-host">demo-server</div>
+      <div class="sv" id="s-ver">SQL Server —</div>
+      <div class="sv" id="s-win">Windows —</div>
+    </div>
+  </div>
+  <nav class="sb-nav">
+    <div class="nl">Visão Geral</div>
+    <div class="ni active" onclick="go('overview')" id="nav-overview"><span>📊</span>Dashboard</div>
+    <div class="nl">Ambiente</div>
+    <div class="ni" onclick="go('server')"    id="nav-server">   <span>🖥</span>Server <span class="nb" id="nb-srv">—</span></div>
+    <div class="ni" onclick="go('databases')" id="nav-databases"><span>🗄</span>Databases <span class="nb" id="nb-db">—</span></div>
+    <div class="ni" onclick="go('discos')"    id="nav-discos">   <span>💿</span>Discos <span class="nb" id="nb-dsk">—</span></div>
+    <div class="ni" onclick="go('arquivos')"  id="nav-arquivos"> <span>📁</span>Arquivos DB</div>
+    <div class="ni" onclick="go('dbsize')"    id="nav-dbsize">   <span>📦</span>DB Size</div>
+    <div class="nl">Performance</div>
+    <div class="ni" onclick="go('memoria')"   id="nav-memoria">  <span>🧠</span>Memória</div>
+    <div class="ni" onclick="go('cpu')"       id="nav-cpu">      <span>⚡</span>CPU Histórico</div>
+    <div class="ni" onclick="go('io')"        id="nav-io">       <span>💾</span>I/O Latência <span class="nb" id="nb-io">—</span></div>
+    <div class="ni" onclick="go('waits')"     id="nav-waits">    <span>⏱</span>Waits <span class="nb" id="nb-wt">—</span></div>
+    <div class="ni" onclick="go('slow')"      id="nav-slow">     <span>🐢</span>Slow Queries <span class="nb" id="nb-sl">—</span></div>
+    <div class="ni" onclick="go('locks')"     id="nav-locks">    <span>🔒</span>Locks <span class="nb" id="nb-lk">—</span></div>
+    <div class="ni" onclick="go('conexoes')"  id="nav-conexoes"> <span>🌐</span>Conexões <span class="nb" id="nb-cn">—</span></div>
+    <div class="nl">Objetos</div>
+    <div class="ni" onclick="go('tabelas')"   id="nav-tabelas">  <span>📋</span>Top Tabelas</div>
+    <div class="ni" onclick="go('midx')"      id="nav-midx">     <span>🔍</span>Missing Idx <span class="nb" id="nb-mi">—</span></div>
+    <div class="ni" onclick="go('frag')"      id="nav-frag">     <span>🧩</span>Fragmentação <span class="nb" id="nb-fr">—</span></div>
+    <div class="ni" onclick="go('idxinuteis')" id="nav-idxinuteis"><span>🗑</span>Índices Inuteis</div>
+    <div class="nl">Operações</div>
+    <div class="ni" onclick="go('backups')"   id="nav-backups">  <span>💾</span>Backups <span class="nb" id="nb-bk">—</span></div>
+    <div class="ni" onclick="go('jobs')"      id="nav-jobs">     <span>⚙️</span>Jobs <span class="nb" id="nb-jb">—</span></div>
+    <div class="ni" onclick="go('config')"    id="nav-config">   <span>🛠</span>Config <span class="nb" id="nb-cf">—</span></div>
+    <div class="ni" onclick="go('tf')"        id="nav-tf">       <span>🚩</span>Trace Flags</div>
+    <div class="ni" onclick="go('counters')"  id="nav-counters"> <span>📈</span>Perf Counters</div>
+    <div class="nl" style="color:var(--accent3)">TOTVS Protheus</div>
+    <div class="ni prot" onclick="go('protheus')" id="nav-protheus"><span>🟣</span>Protheus Assessment <span class="nb" id="nb-pt">—</span></div>
+    <div class="nl">Dados</div>
+    <div class="ni" onclick="go('import')"    id="nav-import">   <span>📥</span>Importar</div>
+  </nav>
+  <div class="sb-footer" id="sf">—</div>
+</aside>
+
+<!-- MAIN -->
+<div class="main">
+  <div class="topbar">
+    <div class="tb-left"><div id="ptitle">Dashboard</div><span id="psub">Visão geral</span></div>
+    <div class="tb-chip" id="tb-chip">demo-server | SQL Server —</div>
+    <div class="tb-actions">
+      <input class="sbox" type="text" placeholder="Buscar..." id="gs" oninput="doSearch(this.value)">
+      <button class="btn btn-g" onclick="window.print()">PDF</button>
+      <button class="btn btn-p" onclick="go('import')">+ Importar</button>
+    </div>
+  </div>
+
+  <!-- OVERVIEW -->
+  <div class="page active" id="page-overview">
+    <div class="kgrid">
+      <div class="kc" style="--kc:var(--ok)"    onclick="go('memoria')"><div class="kc-label">Buffer Hit</div><div class="kc-val" id="k-hit">—</div><div class="kc-sub">Ideal &gt;99%</div><div class="kc-arr">→</div></div>
+      <div class="kc" style="--kc:var(--info)"  onclick="go('memoria')"><div class="kc-label">PLE (s)</div><div class="kc-val" id="k-ple">—</div><div class="kc-sub">Ideal &gt;300s</div><div class="kc-arr">→</div></div>
+      <div class="kc" style="--kc:var(--crit)"  onclick="go('locks')"  ><div class="kc-label">Bloqueados</div><div class="kc-val" id="k-blk">—</div><div class="kc-sub">deve ser 0</div><div class="kc-arr">→</div></div>
+      <div class="kc" style="--kc:var(--crit)"  onclick="go('locks')"  ><div class="kc-label">Deadlocks/s</div><div class="kc-val" id="k-ddl">—</div><div class="kc-sub">deve ser 0</div><div class="kc-arr">→</div></div>
+      <div class="kc" style="--kc:var(--warn)"  onclick="go('midx')"   ><div class="kc-label">Missing Idx</div><div class="kc-val" id="k-midx">—</div><div class="kc-sub">detectados</div><div class="kc-arr">→</div></div>
+      <div class="kc" style="--kc:var(--crit)"  onclick="go('backups')" ><div class="kc-label">Bkp Atrasados</div><div class="kc-val" id="k-bkp">—</div><div class="kc-sub">databases</div><div class="kc-arr">→</div></div>
+      <div class="kc" style="--kc:var(--crit)"  onclick="go('jobs')"    ><div class="kc-label">Jobs Falhou</div><div class="kc-val" id="k-jobs">—</div><div class="kc-sub">última exec.</div><div class="kc-arr">→</div></div>
+      <div class="kc" style="--kc:var(--accent2)" onclick="go('waits')"><div class="kc-label">Top Wait</div><div class="kc-val" id="k-wt" style="font-size:13px;margin-top:2px">—</div><div class="kc-sub" id="k-wt-ms">—</div><div class="kc-arr">→</div></div>
+    </div>
+    <div class="sh"><div class="st"><span class="sn">[22]</span><span class="sh2">Resumo Executivo</span></div></div>
+    <div class="dgrid" id="dgrid"></div>
+    <div class="sh"><div class="st"><span class="sn">[10]</span><span class="sh2">Top 5 Waits</span></div><button class="fb" onclick="go('waits')">Ver todos →</button></div>
+    <div class="tw"><table><thead><tr><th>Wait Type</th><th>Total (s)</th><th>Avg (ms)</th><th>Status</th></tr></thead><tbody id="ov-waits"></tbody></table></div>
+    <div class="sh"><div class="st"><span class="sn">[12]</span><span class="sh2">Top 5 Missing Indexes</span></div><button class="fb" onclick="go('midx')">Ver todos →</button></div>
+    <div class="tw"><table><thead><tr><th>Tabela</th><th>Impacto</th><th>Seeks</th><th>Status</th></tr></thead><tbody id="ov-midx"></tbody></table></div>
+  </div>
+
+  <!-- SERVER -->
+  <div class="page" id="page-server">
+    <div class="sh"><div class="st"><span class="sn">[00]</span><span class="sh2">Server Properties</span></div></div>
+    <p class="sdesc">Versão, patch level, SO, CPUs e capacidade do servidor.</p>
+    <div class="tw"><table><thead><tr><th>Propriedade</th><th>Valor</th><th>Detalhe</th></tr></thead><tbody id="tb-server"></tbody></table></div>
+  </div>
+
+  <!-- DATABASES -->
+  <div class="page" id="page-databases">
+    <div class="sh"><div class="st"><span class="sn">[01]</span><span class="sh2">Databases</span></div>
+      <div class="tools"><button class="fb on" onclick="filt('db','all',this)">Todos</button><button class="fb" onclick="filt('db','warn',this)">Atenção</button></div>
+    </div>
+    <p class="sdesc">Clique para ver propriedades detalhadas e recomendações.</p>
+    <div class="tw"><table><thead><tr><th>Database</th><th>Status</th><th>Recovery</th><th>Compat.</th><th>RCSI</th><th>Auto Close</th><th>Log Reuse Wait</th></tr></thead><tbody id="tb-db"></tbody></table></div>
+  </div>
+
+  <!-- DISCOS -->
+  <div class="page" id="page-discos">
+    <div class="sh"><div class="st"><span class="sn">[02]</span><span class="sh2">Discos</span></div></div>
+    <p class="sdesc">Espaço livre por volume. Acima de 90% é crítico.</p>
+    <div class="tw"><table><thead><tr><th>Volume / Tipo</th><th>Total GB</th><th>Livre GB</th><th>Usado %</th><th>Visual</th><th>Status</th></tr></thead><tbody id="tb-dsk"></tbody></table></div>
+  </div>
+
+  <!-- ARQUIVOS -->
+  <div class="page" id="page-arquivos">
+    <div class="sh"><div class="st"><span class="sn">[03]</span><span class="sh2">Arquivos por Database</span></div></div>
+    <p class="sdesc">Clique para ver caminho completo e recomendações de auto-growth.</p>
+    <div class="tw"><table><thead><tr><th>Database — Arquivo</th><th>Tipo</th><th>Tamanho MB</th><th>Auto-growth</th><th>Max Size</th><th>Status</th></tr></thead><tbody id="tb-files"></tbody></table></div>
+  </div>
+
+  <!-- DB SIZE -->
+  <div class="page" id="page-dbsize">
+    <div class="sh"><div class="st"><span class="sn">[04]</span><span class="sh2">Tamanho por Database</span></div></div>
+    <div class="tw"><table><thead><tr><th onclick="srt('tb-dbsz',0)">Database</th><th>Dados MB</th><th>Log MB</th><th onclick="srt('tb-dbsz',3)">Total MB</th><th>Arquivos</th><th>Recovery</th></tr></thead><tbody id="tb-dbsz"></tbody></table></div>
+  </div>
+
+  <!-- TOP TABELAS -->
+  <div class="page" id="page-tabelas">
+    <div class="sh"><div class="st"><span class="sn">[05]</span><span class="sh2">10 Maiores Tabelas</span></div></div>
+    <p class="sdesc">Clique para ver detalhes e recomendações de manutenção.</p>
+    <div class="tw"><table><thead><tr><th>Tabela</th><th onclick="srt('tb-tbl',1)">Total MB</th><th>Dados MB</th><th>Índices MB</th><th>Linhas~</th><th>Status</th></tr></thead><tbody id="tb-tbl"></tbody></table></div>
+  </div>
+
+  <!-- FRAGMENTAÇÃO -->
+  <div class="page" id="page-frag">
+    <div class="sh"><div class="st"><span class="sn">[06]</span><span class="sh2">Fragmentação de Índices</span></div>
+      <div class="tools"><button class="fb on" onclick="filt('frag','all',this)">Todos</button><button class="fb" onclick="filt('frag','crit',this)">&gt;30%</button><button class="fb" onclick="filt('frag','warn',this)">&gt;10%</button></div>
+    </div>
+    <p class="sdesc">Clique para ver o comando ALTER INDEX correspondente.</p>
+    <div class="tw"><table><thead><tr><th>Índice</th><th onclick="srt('tb-frag',1)">Fragmentação</th><th>Páginas</th><th>Status</th></tr></thead><tbody id="tb-frag"></tbody></table></div>
+  </div>
+
+  <!-- MEMÓRIA -->
+  <div class="page" id="page-memoria">
+    <div class="sh"><div class="st"><span class="sn">[07]</span><span class="sh2">Memória</span></div></div>
+    <p class="sdesc">Uso de RAM, PLE e alocação por memory clerk.</p>
+    <div class="tw"><table><thead><tr><th>Métrica</th><th>Valor</th><th>Visual</th><th>Status</th></tr></thead><tbody id="tb-mem"></tbody></table></div>
+  </div>
+
+  <!-- CPU -->
+  <div class="page" id="page-cpu">
+    <div class="sh"><div class="st"><span class="sn">[08]</span><span class="sh2">CPU — Histórico</span></div></div>
+    <p class="sdesc">Amostras coletadas do ring buffer do SQL Server — até 256 pontos (~últimas 4-8h).</p>
+    <!-- Chart -->
+    <div style="background:var(--bg2);border:1px solid var(--border);border-radius:10px;padding:20px;margin-bottom:22px;">
+      <canvas id="cpuChart" style="max-height:360px"></canvas>
+    </div>
+    <!-- Tabela detalhada -->
+    <div class="sh"><div class="st"><span class="sn">tabela</span><span class="sh2">Amostras detalhadas</span></div></div>
+    <div class="tw"><table><thead><tr><th>Timestamp</th><th>SQL %</th><th>Outros %</th><th>Idle %</th><th>Total Usado</th><th>Status</th></tr></thead><tbody id="tb-cpu"></tbody></table></div>
+  </div>
+
+  <!-- IO -->
+  <div class="page" id="page-io">
+    <div class="sh"><div class="st"><span class="sn">[09]</span><span class="sh2">I/O Latência por Arquivo</span></div>
+      <div class="tools"><button class="fb on" onclick="filt('io','all',this)">Todos</button><button class="fb" onclick="filt('io','warn',this)">Atenção</button></div>
+    </div>
+    <p class="sdesc">Read &gt;20ms indica disco saturado. Clique para ver recomendações.</p>
+    <div class="tw"><table><thead><tr><th>Database — Arquivo</th><th onclick="srt('tb-io',1)">Read ms</th><th onclick="srt('tb-io',2)">Write ms</th><th>Reads</th><th>Writes</th><th>Tipo</th><th>Status</th></tr></thead><tbody id="tb-io"></tbody></table></div>
+  </div>
+
+  <!-- WAITS -->
+  <div class="page" id="page-waits">
+    <div class="sh"><div class="st"><span class="sn">[10]</span><span class="sh2">Wait Statistics</span></div>
+      <div class="tools">
+        <button class="fb on" onclick="fwait('all',this)">Todos</button>
+        <button class="fb" onclick="fwait('PAGEIO',this)">I/O</button>
+        <button class="fb" onclick="fwait('LCK',this)">Lock</button>
+        <button class="fb" onclick="fwait('CXPACKET',this)">Paralel.</button>
+        <button class="fb" onclick="fwait('ASYNC',this)">Network</button>
+      </div>
+    </div>
+    <p class="sdesc">Clique em qualquer wait para ver descrição e como resolver.</p>
+    <div class="tw"><table><thead><tr><th>#</th><th>Wait Type</th><th onclick="srt('tb-wt',2)">Total (s)</th><th onclick="srt('tb-wt',3)">Avg (ms)</th><th>Max (ms)</th><th>Ocorrências</th><th>Status</th></tr></thead><tbody id="tb-wt"></tbody></table></div>
+  </div>
+
+  <!-- SLOW -->
+  <div class="page" id="page-slow">
+    <div class="sh"><div class="st"><span class="sn">[11]</span><span class="sh2">Slow Queries</span></div>
+      <div class="tools">
+        <input class="sbox" type="text" placeholder="Filtrar query..." oninput="fsearch('tb-sl',this.value,5)">
+        <button class="fb on" onclick="filt('sl','all',this)">Todas</button>
+        <button class="fb" onclick="filt('sl','crit',this)">&gt;5s</button>
+        <button class="fb" onclick="filt('sl','warn',this)">&gt;1s</button>
+      </div>
+    </div>
+    <p class="sdesc">Clique para ver a query completa e recomendações de otimização.</p>
+    <div class="tw"><table><thead><tr><th onclick="srt('tb-sl',0)">Avg Elapsed</th><th>Execuções</th><th>Avg CPU ms</th><th>Avg Reads</th><th>Query</th></tr></thead><tbody id="tb-sl"></tbody></table></div>
+  </div>
+
+  <!-- MISSING INDEXES -->
+  <div class="page" id="page-midx">
+    <div class="sh"><div class="st"><span class="sn">[12]</span><span class="sh2">Missing Indexes</span></div></div>
+    <p class="sdesc">Clique para ver o comando CREATE INDEX pronto.</p>
+    <div class="tw"><table><thead><tr><th>Tabela</th><th onclick="srt('tb-mi',1)">Impacto</th><th>Seeks</th><th>Scans</th><th>Status</th></tr></thead><tbody id="tb-mi"></tbody></table></div>
+  </div>
+
+  <!-- LOCKS -->
+  <div class="page" id="page-locks">
+    <div class="sh"><div class="st"><span class="sn">[13]</span><span class="sh2">Locks & Bloqueios</span></div></div>
+    <p class="sdesc">Clique em qualquer sessão para ver a query e o comando KILL.</p>
+    <div class="tw"><table><thead><tr><th>Session</th><th>Bloq. por</th><th>Wait Type</th><th>Wait ms</th><th>CPU ms</th><th>Reads</th><th>Query</th><th>Status</th></tr></thead><tbody id="tb-lk"></tbody></table></div>
+    <div class="sh" style="margin-top:18px"><div class="st"><span class="sn">counters</span><span class="sh2">Lock Counters</span></div></div>
+    <div class="tw"><table><thead><tr><th>Métrica</th><th>Valor</th><th>Status</th></tr></thead><tbody id="tb-lkcnt"></tbody></table></div>
+  </div>
+
+  <!-- CONEXÕES -->
+  <div class="page" id="page-conexoes">
+    <div class="sh"><div class="st"><span class="sn">[14]</span><span class="sh2">Conexões por IP</span></div></div>
+    <p class="sdesc">Distribuição de conexões por endereço IP. Útil para identificar aplicações com pool mal configurado.</p>
+    <div class="tw"><table><thead><tr><th onclick="srt('tb-cn',1)">IP / Host</th><th onclick="srt('tb-cn',1)">Conexões</th><th>Sleeping</th><th>Running</th><th>Programa</th><th>Login</th><th>Status</th></tr></thead><tbody id="tb-cn"></tbody></table></div>
+  </div>
+
+  <!-- ÍNDICES INÚTEIS -->
+  <div class="page" id="page-idxinuteis">
+    <div class="sh"><div class="st"><span class="sn">[20]</span><span class="sh2">Índices Não Utilizados</span></div></div>
+    <p class="sdesc">Índices que nunca foram usados para leitura mas geram overhead de escrita. Clique para ver o comando DROP.</p>
+    <div class="tw"><table><thead><tr><th>Índice</th><th>Seeks</th><th>Scans</th><th>Updates</th><th>Status</th></tr></thead><tbody id="tb-ii"></tbody></table></div>
+  </div>
+
+  <!-- BACKUPS -->
+  <div class="page" id="page-backups">
+    <div class="sh"><div class="st"><span class="sn">[15]</span><span class="sh2">Backup Status</span></div>
+      <div class="tools"><button class="fb on" onclick="filt('bk','all',this)">Todos</button><button class="fb" onclick="filt('bk','warn',this)">Atenção</button></div>
+    </div>
+    <p class="sdesc">Backup FULL &gt;7 dias ou ausente é marcado como CRÍTICO.</p>
+    <div class="tw"><table><thead><tr><th>Database</th><th>Último Backup FULL</th><th>Dias Desde</th><th>Tamanho MB</th><th>Status</th></tr></thead><tbody id="tb-bk"></tbody></table></div>
+  </div>
+
+  <!-- JOBS -->
+  <div class="page" id="page-jobs">
+    <div class="sh"><div class="st"><span class="sn">[16]</span><span class="sh2">SQL Agent Jobs</span></div>
+      <div class="tools"><button class="fb on" onclick="filt('jb','all',this)">Todos</button><button class="fb" onclick="filt('jb','fail',this)">Falhou</button><button class="fb" onclick="filt('jb','dis',this)">Desabilitados</button></div>
+    </div>
+    <p class="sdesc">Clique para ver detalhes e como reexecutar.</p>
+    <div class="tw"><table><thead><tr><th>Job</th><th>Status</th><th>Última Execução</th><th>Resultado</th><th>Duração (s)</th><th>Categoria</th></tr></thead><tbody id="tb-jb"></tbody></table></div>
+  </div>
+
+  <!-- CONFIG -->
+  <div class="page" id="page-config">
+    <div class="sh"><div class="st"><span class="sn">[18]</span><span class="sh2">Configurações Críticas</span></div>
+      <div class="tools"><button class="fb on" onclick="filt('cf','all',this)">Todas</button><button class="fb" onclick="filt('cf','warn',this)">Atenção</button></div>
+    </div>
+    <p class="sdesc">Clique para ver como alterar.</p>
+    <div class="tw"><table><thead><tr><th>Configuração</th><th>Valor Atual</th><th>Recomendação</th><th>Status</th></tr></thead><tbody id="tb-cf"></tbody></table></div>
+  </div>
+
+  <!-- TRACE FLAGS -->
+  <div class="page" id="page-tf">
+    <div class="sh"><div class="st"><span class="sn">[17]</span><span class="sh2">Trace Flags Ativas</span></div></div>
+    <div class="tw"><table><thead><tr><th>Trace Flag</th><th>Status</th><th>Descrição</th></tr></thead><tbody id="tb-tf"></tbody></table></div>
+  </div>
+
+  <!-- COUNTERS -->
+  <div class="page" id="page-counters">
+    <div class="sh"><div class="st"><span class="sn">[19]</span><span class="sh2">Performance Counters</span></div></div>
+    <div class="tw"><table><thead><tr><th>Counter</th><th>Valor</th><th>Status</th></tr></thead><tbody id="tb-cnt"></tbody></table></div>
+  </div>
+
+  <!-- PROTHEUS -->
+  <div class="page" id="page-protheus">
+    <div class="prot-banner">
+      <div class="prot-banner-icon">🟣</div>
+      <div>
+        <h3>TOTVS Protheus Assessment</h3>
+        <p>Diagnóstico específico para bancos Protheus — registros deletados, heaps, RCSI, estatísticas e configurações recomendadas pela TOTVS.</p>
+      </div>
+    </div>
+    <div class="sh"><div class="st"><span class="sn prot">[21]</span><span class="sh2">Configurações do Banco Protheus</span></div></div>
+    <p class="sdesc">Parâmetros críticos recomendados pela TOTVS para o banco Protheus.</p>
+    <div class="tw"><table><thead><tr><th>Configuração</th><th>Valor</th><th>Recomendação</th><th>Status</th></tr></thead><tbody id="tb-pt-cfg"></tbody></table></div>
+    <div class="sh"><div class="st"><span class="sn prot">[21]</span><span class="sh2">Top Tabelas Protheus</span></div></div>
+    <div class="tw"><table><thead><tr><th>Tabela</th><th onclick="srt('tb-pt-tbl',1)">Total MB</th><th>Dados MB</th><th>Índices MB</th><th>Linhas~</th><th>Status</th></tr></thead><tbody id="tb-pt-tbl"></tbody></table></div>
+    <div class="sh"><div class="st"><span class="sn prot">[21]</span><span class="sh2">Tabelas com Deleção Lógica (D_E_L_E_T_)</span></div></div>
+    <p class="sdesc">Tabelas com coluna D_E_L_E_T_ e muitas linhas — candidatas ao PACK. Clique para ver o comando.</p>
+    <div class="tw"><table><thead><tr><th>Tabela</th><th>Linhas~</th><th>Ação Recomendada</th><th>Status</th></tr></thead><tbody id="tb-pt-del"></tbody></table></div>
+    <div class="sh"><div class="st"><span class="sn prot">[21]</span><span class="sh2">Heaps (sem índice clusterizado)</span></div></div>
+    <p class="sdesc">Tabelas sem índice clusterizado — performance degradada em grandes volumes. Use IXCRIA no Protheus.</p>
+    <div class="tw"><table><thead><tr><th>Tabela</th><th>Linhas~</th><th>Tamanho MB</th><th>Status</th></tr></thead><tbody id="tb-pt-heap"></tbody></table></div>
+    <div class="sh"><div class="st"><span class="sn prot">[21]</span><span class="sh2">Estatísticas Desatualizadas</span></div></div>
+    <p class="sdesc">Clique para ver o comando UPDATE STATISTICS.</p>
+    <div class="tw"><table><thead><tr><th>Estatística</th><th>Última Atualização</th><th>Modificações</th><th>Status</th></tr></thead><tbody id="tb-pt-sts"></tbody></table></div>
+    <div class="sh"><div class="st"><span class="sn prot">[21]</span><span class="sh2">Missing Indexes Protheus</span></div></div>
+    <p class="sdesc">Clique para ver o comando CREATE INDEX.</p>
+    <div class="tw"><table><thead><tr><th>Tabela</th><th>Impacto</th><th>Status</th></tr></thead><tbody id="tb-pt-midx"></tbody></table></div>
+    <div class="sh"><div class="st"><span class="sn prot">[21]</span><span class="sh2">Recomendações TOTVS</span></div></div>
+    <div class="tw"><table><thead><tr><th>Recomendação</th><th>Valor Atual</th><th>Status</th><th>Comando / Ação</th></tr></thead><tbody id="tb-pt-rec"></tbody></table></div>
+    <div class="sh"><div class="st"><span class="sn prot">[21]</span><span class="sh2">Empresas/Filiais (SX2)</span></div></div>
+    <div class="tw"><table><thead><tr><th>Empresa</th><th>Filial</th><th>Nome</th></tr></thead><tbody id="tb-pt-sx2"></tbody></table></div>
+  </div>
+
+  <!-- IMPORT -->
+  <div class="page" id="page-import">
+    <div class="sh"><div class="st"><span class="sn">↓</span><span class="sh2">Importar dados</span></div></div>
+    <div style="background:rgba(232,97,58,.07);border:1px solid rgba(232,97,58,.2);border-radius:9px;padding:14px 18px;margin-bottom:18px;font-size:12px;color:var(--text);line-height:1.9">
+      <div style="font-weight:500;color:var(--accent);margin-bottom:7px">Como exportar do SSMS — 3 passos</div>
+      <div><span style="color:var(--accent);font-family:'DM Mono',monospace;font-size:11px">1.</span> <code>EXEC tempdb.dbo.run_assessment;</code> — ou com Protheus: <code>EXEC tempdb.dbo.run_assessment @banco_protheus=N'NOME_BANCO';</code></div>
+      <div><span style="color:var(--accent);font-family:'DM Mono',monospace;font-size:11px">2.</span> <code>SELECT * FROM tempdb.dbo.assessment_report ORDER BY id;</code></div>
+      <div><span style="color:var(--accent);font-family:'DM Mono',monospace;font-size:11px">3.</span> Results → <strong>Ctrl+A → Ctrl+C</strong> → cole abaixo → <strong>Carregar</strong></div>
+    </div>
+    <div class="icard">
+      <h4>Cole aqui o resultado completo</h4>
+      <p>Formato: <code>id | secao | metrica | valor | status | detalhe</code> — TAB ou |</p>
+      <textarea id="idata" style="min-height:260px;font-size:11px" oninput="previewCnt(this)"
+        placeholder="1	[00] SERVER	versao_sql_server	17.0.2.0	OK	RTM — Developer Edition&#10;2	[00] SERVER	hostname	PROD-DB-01	OK&#10;...&#10;XX	[21] PROTHEUS	banco_analisado	PROTHEUS	OK&#10;..."></textarea>
+      <div style="margin-top:6px;font-size:10px;color:var(--muted);font-family:'DM Mono',monospace" id="prev-cnt"></div>
+    </div>
+    <div style="margin-top:12px;display:flex;gap:8px;align-items:center;flex-wrap:wrap">
+      <button class="btn btn-p" onclick="importData()">Carregar</button>
+      <button class="btn btn-prot" onclick="loadDemo()">Demo (incl. Protheus)</button>
+      <button class="btn btn-g" onclick="document.getElementById('idata').value='';document.getElementById('prev-cnt').textContent=''">Limpar</button>
+      <span style="font-size:11px;color:var(--muted);font-family:'DM Mono',monospace" id="imp-st"></span>
+    </div>
+  </div>
+
+</div></div>
+
+<div class="mov" id="modal" onclick="if(event.target.id==='modal')closeModal()">
+  <div class="modal"><div class="mh"><div><h3 id="mt"></h3><div class="ms" id="ms2"></div></div><button class="mc" onclick="closeModal()">✕</button></div>
+  <div class="mb" id="mb"></div></div>
+</div>
+<div class="toast" id="toast"></div>
+
+<script>
+// ── STATE ──
+const D={server:[],databases:[],discos:[],arquivos:[],dbsize:[],tabelas:[],frag:[],
+         memoria:[],cpu:[],io:[],waits:[],slow:[],locks:[],lkCnt:[],conexoes:[],
+         midx:[],idxinuteis:[],backups:[],jobs:[],config:[],tf:[],counters:[],
+         prot_cfg:[],prot_tbl:[],prot_del:[],prot_heap:[],prot_sts:[],
+         prot_midx:[],prot_rec:[],prot_sx2:[],resumo:[]};
+
+const PM={overview:{t:'Dashboard',s:'Visão geral'},server:{t:'Server Properties',s:'Versão, patch e SO'},
+  databases:{t:'Databases',s:'Status e propriedades'},discos:{t:'Discos',s:'Espaço livre por volume'},
+  arquivos:{t:'Arquivos',s:'Nome, tipo e auto-growth'},dbsize:{t:'DB Size',s:'Tamanho por banco'},
+  tabelas:{t:'Top Tabelas',s:'10 maiores'},frag:{t:'Fragmentação',s:'Índices fragmentados'},
+  memoria:{t:'Memória',s:'RAM e PLE'},cpu:{t:'CPU Histórico',s:'Ring buffer'},
+  io:{t:'I/O Latência',s:'Por arquivo'},waits:{t:'Waits',s:'Top wait events'},
+  slow:{t:'Slow Queries',s:'Por elapsed time'},locks:{t:'Locks',s:'Sessões bloqueadas'},
+  conexoes:{t:'Conexões',s:'Por IP e banco'},midx:{t:'Missing Indexes',s:'CREATE INDEX sugeridos'},
+  idxinuteis:{t:'Índices Inúteis',s:'Sem uso, geram overhead'},
+  backups:{t:'Backups',s:'Status por database'},jobs:{t:'Jobs',s:'SQL Agent'},
+  config:{t:'Configurações',s:'Parâmetros críticos'},tf:{t:'Trace Flags',s:'Flags ativas'},
+  counters:{t:'Perf Counters',s:'Contadores de performance'},
+  protheus:{t:'Protheus Assessment',s:'TOTVS Protheus — diagnóstico específico'},
+  import:{t:'Importar',s:'Cole o resultado do assessment'}};
+
+function go(id){
+  document.querySelectorAll('.page').forEach(p=>p.classList.remove('active'));
+  document.querySelectorAll('.ni').forEach(n=>n.classList.remove('active'));
+  const p=document.getElementById('page-'+id);if(p)p.classList.add('active');
+  const n=document.getElementById('nav-'+id);if(n)n.classList.add('active');
+  const m=PM[id]||{};
+  document.getElementById('ptitle').textContent=m.t||id;
+  document.getElementById('psub').textContent=m.s||'';
+  window.scrollTo(0,0);
+}
+
+// ── HELPERS ──
+function sc(s){const u=(s||'').toUpperCase();
+  if(u==='CRITICO'||u.includes('CRITICO'))return'bcrit';
+  if(u==='ATENCAO'||u.includes('ATENCAO'))return'bwarn';
+  if(u==='OK')return'bok';return'binfo';}
+function sl(s){const u=(s||'').toUpperCase();
+  if(u.includes('CRITICO'))return'Crítico';if(u.includes('ATENCAO'))return'Atenção';
+  if(u==='OK')return'OK';return s||'—';}
+function bdg(c,l){return`<span class="bdg ${c}">${l}</span>`;}
+function bar(pct,col){return`<div class="barw"><div class="barbg"><div class="barf" style="width:${Math.min(100,Math.max(0,pct))}%;background:${col||'var(--accent)'}"></div></div><span class="barv">${pct}%</span></div>`;}
+function n(v){const f=parseFloat(v);return isNaN(f)?v:f.toLocaleString('pt-BR');}
+function empty(c){return`<tr><td colspan="${c}" class="empty"><strong>Sem dados</strong>Importe na tela Importar</td></tr>`;}
+function toast(msg){const t=document.getElementById('toast');t.textContent=msg;t.style.display='block';setTimeout(()=>t.style.display='none',2500);}
+
+// ── MODAL ──
+function openModal(t,s,html){document.getElementById('mt').textContent=t;document.getElementById('ms2').textContent=s||'';document.getElementById('mb').innerHTML=html;document.getElementById('modal').classList.add('open');}
+function closeModal(){document.getElementById('modal').classList.remove('open');}
+document.addEventListener('keydown',e=>{if(e.key==='Escape')closeModal();});
+
+// ── SORT ──
+const SS={};
+function srt(id,col){
+  const tb=document.getElementById(id);if(!tb)return;
+  const k=id+col;SS[k]=!SS[k];
+  Array.from(tb.querySelectorAll('tr')).sort((a,b)=>{
+    const av=(a.cells[col]?.textContent||'').replace(/[^0-9.-]/g,'');
+    const bv=(b.cells[col]?.textContent||'').replace(/[^0-9.-]/g,'');
+    const an=parseFloat(av),bn=parseFloat(bv);
+    if(!isNaN(an)&&!isNaN(bn))return SS[k]?an-bn:bn-an;
+    return SS[k]?av.localeCompare(bv):bv.localeCompare(av);
+  }).forEach(r=>tb.appendChild(r));
+}
+function fsearch(id,val,col){
+  const tb=document.getElementById(id);if(!tb)return;
+  const v=val.toLowerCase();
+  tb.querySelectorAll('tr').forEach(r=>{const c=r.cells[col];r.style.display=(!c||c.textContent.toLowerCase().includes(v))?'':'none';});
+}
+function filt(grp,type,btn){
+  const map={db:'page-databases',io:'page-io',frag:'page-frag',sl:'page-slow',
+             bk:'page-backups',jb:'page-jobs',cf:'page-config'};
+  const pg=document.getElementById(map[grp]||'page-'+grp);
+  if(pg) pg.querySelectorAll('.fb').forEach(b=>b.classList.remove('on'));
+  btn.classList.add('on');
+  const tbMap={db:'tb-db',io:'tb-io',frag:'tb-frag',sl:'tb-sl',bk:'tb-bk',jb:'tb-jb',cf:'tb-cf'};
+  const tb=document.getElementById(tbMap[grp]);if(!tb)return;
+  tb.querySelectorAll('tr').forEach(r=>{
+    if(type==='all'){r.style.display='';return;}
+    const isW=r.dataset.w==='1',isFail=r.dataset.fail==='1',isDis=r.dataset.dis==='1';
+    const ms=parseFloat(r.dataset.ms||0);const pct=parseFloat(r.dataset.pct||0);
+    if(type==='warn')r.style.display=isW?'':'none';
+    else if(type==='fail')r.style.display=isFail?'':'none';
+    else if(type==='dis')r.style.display=isDis?'':'none';
+    else if(type==='crit')r.style.display=(ms>5000||pct>30)?'':'none';
+  });
+}
+function fwait(t,btn){
+  document.querySelectorAll('#page-waits .fb').forEach(b=>b.classList.remove('on'));btn.classList.add('on');
+  document.querySelectorAll('#tb-wt tr').forEach(r=>{r.style.display=(t==='all'||(r.dataset.wt||'').includes(t))?'':'none';});
+}
+function doSearch(v){if(v.length<3)return;go('slow');setTimeout(()=>fsearch('tb-sl',v,4),80);}
+
+// ── SERVER UI ──
+function updateSrvUI(host,ver,win){
+  document.getElementById('s-host').textContent=host||'—';
+  document.getElementById('s-ver').textContent='SQL Server '+(ver||'—');
+  document.getElementById('s-win').textContent=win||'';
+  document.getElementById('tb-chip').textContent=`${host||'—'} | SQL Server ${ver||'—'}`;
+  document.title='SQL Assessment — '+(host||'Report');
+}
+
+// ── PARSE ──
+function parsePipe(txt){
+  return txt.trim().split('\n')
+    .filter(l=>l.trim()&&!l.match(/^id[\t|]/i)&&!l.startsWith('#'))
+    .map(l=>{const sep=l.includes('\t')?'\t':'|';return l.split(sep).map(c=>c.trim());})
+    .filter(r=>r.length>=4);
+}
+function previewCnt(el){
+  const n=el.value.trim().split('\n').filter(l=>l.trim()&&!l.match(/^id/i)).length;
+  document.getElementById('prev-cnt').textContent=n>0?n+' registros detectados':'';
+}
+
+// ── IMPORT ──
+function importData(){
+  const raw=document.getElementById('idata').value.trim();
+  if(!raw){toast('Cole os dados primeiro.');return;}
+  const rows=parsePipe(raw);
+  Object.keys(D).forEach(k=>D[k]=[]);
+
+  rows.forEach(r=>{
+    const sec=r[1]||'',met=r[2]||'',val=r[3]||'',sts=r[4]||'',det=r[5]||'';
+    const obj={met,val,sts,det};
+
+    if(sec==='[00] SERVER') D.server.push(obj);
+    if(sec==='[01] DATABASES') D.databases.push(obj);
+    if(sec==='[02] DISCOS') D.discos.push(obj);
+    if(sec==='[03] ARQUIVOS') D.arquivos.push(obj);
+    if(sec==='[04] DB SIZE') D.dbsize.push(obj);
+    if(sec==='[05] TOP TABELAS') D.tabelas.push(obj);
+    if(sec==='[06] FRAGMENTACAO') D.frag.push(obj);
+    if(sec==='[07] MEMORIA') D.memoria.push(obj);
+    if(sec==='[08] CPU') D.cpu.push(obj);
+    if(sec==='[09] IO LATENCIA') D.io.push(obj);
+    if(sec==='[10] WAITS') D.waits.push(obj);
+    if(sec==='[11] SLOW QUERIES') D.slow.push(obj);
+    if(sec==='[12] MISSING INDEXES') D.midx.push(obj);
+    if(sec==='[13] LOCKS'&&met.startsWith('session=')) D.locks.push(obj);
+    if(sec==='[13] LOCKS'&&!met.startsWith('session=')) D.lkCnt.push(obj);
+    if(sec==='[14] CONEXOES') D.conexoes.push(obj);
+    if(sec==='[15] BACKUPS') D.backups.push(obj);
+    if(sec==='[16] JOBS') D.jobs.push(obj);
+    if(sec==='[17] TRACE FLAGS') D.tf.push(obj);
+    if(sec==='[18] CONFIG') D.config.push(obj);
+    if(sec==='[19] COUNTERS') D.counters.push(obj);
+    if(sec==='[20] INDICES INUTEIS') D.idxinuteis.push(obj);
+    if(sec==='[22] RESUMO') D.resumo.push(obj);
+
+    // Protheus
+    if(sec==='[21] PROTHEUS'){
+      if(met.startsWith('banco_')||met.includes('read_committed')||met.includes('snapshot')||
+         met.includes('auto_')||met.includes('compat')||met.includes('recovery')
+         &&!met.startsWith('rec_'))
+        D.prot_cfg.push(obj);
+      else if(met.startsWith('tabela_'))  D.prot_tbl.push(obj);
+      else if(met.startsWith('deletados_')) D.prot_del.push(obj);
+      else if(met.startsWith('heap_'))    D.prot_heap.push(obj);
+      else if(met.startsWith('stats_'))   D.prot_sts.push(obj);
+      else if(met.startsWith('missing_idx_')) D.prot_midx.push(obj);
+      else if(met.startsWith('rec_'))     D.prot_rec.push(obj);
+      else if(met.startsWith('empresa_')) D.prot_sx2.push(obj);
+    }
+  });
+
+  const host=D.server.find(r=>r.met==='hostname');
+  const ver= D.server.find(r=>r.met==='versao_sql_server');
+  const win= D.server.find(r=>r.met==='windows_version');
+  if(host||ver) updateSrvUI(host?.val,ver?.val,win?.val);
+
+  renderAll();
+  go('overview');
+  document.getElementById('imp-st').textContent=rows.length+' registros carregados';
+  toast(rows.length+' registros carregados!');
+}
+
+// ── RENDER ALL ──
+function renderAll(){
+  renderResumo();renderServer();renderDatabases();renderDiscos();renderArquivos();
+  renderDbSize();renderTabelas();renderFrag();renderMemoria();renderCpu();renderIo();
+  renderWaits();renderSlow();renderLocks();renderConexoes();renderMidx();
+  renderIdxInuteis();renderBackups();renderJobs();renderConfig();renderTf();
+  renderCounters();renderProtheus();
+}
+
+// ── RESUMO ──
+function renderResumo(){
+  const map={};D.resumo.forEach(r=>map[r.met.toLowerCase()]=r);
+  const g=k=>map[k]||{val:'—',sts:'—',det:''};
+
+  function setK(id,r,pg){
+    const el=document.getElementById(id);if(!el)return;
+    el.textContent=r.val;
+    const c=sc(r.sts);
+    el.closest('.kc')?.style.setProperty('--kc',c==='bcrit'?'var(--crit)':c==='bwarn'?'var(--warn)':'var(--ok)');
+  }
+  setK('k-hit',g('buffer cache hit ratio'));setK('k-ple',g('page life expectancy'));
+  setK('k-blk',g('sessoes bloqueadas agora'));setK('k-ddl',g('deadlocks/sec'));
+  setK('k-midx',g('missing indexes'));setK('k-bkp',g('databases sem backup recente'));
+  setK('k-jobs',g('jobs com falha'));
+  const tw=g('top wait event');
+  document.getElementById('k-wt').textContent=(tw.val||'—').split('_').slice(0,3).join('_');
+  document.getElementById('k-wt-ms').textContent=tw.det||'';
+
+  // nav badges
+  const nb=(id,arr,filterFn)=>{const el=document.getElementById(id);if(el)el.textContent=filterFn?arr.filter(filterFn).length||'—':arr.length||'—';};
+  nb('nb-wt',D.waits);nb('nb-sl',D.slow);nb('nb-lk',D.locks);nb('nb-mi',D.midx);
+  nb('nb-fr',D.frag,r=>r.sts!=='OK');nb('nb-bk',D.backups,r=>r.sts!=='OK');
+  nb('nb-jb',D.jobs,r=>r.sts!=='OK');nb('nb-cf',D.config,r=>r.sts!=='OK');
+  nb('nb-db',D.databases);nb('nb-dsk',D.discos);nb('nb-cn',D.conexoes);
+  nb('nb-io',D.io,r=>r.sts!=='OK');
+  const ptTotal=[...D.prot_cfg,...D.prot_tbl,...D.prot_del,...D.prot_heap,...D.prot_sts,...D.prot_midx,...D.prot_rec].filter(r=>r.sts!=='OK').length;
+  const ptEl=document.getElementById('nb-pt');if(ptEl){ptEl.textContent=ptTotal||'—';ptEl.className=ptTotal>0?'nb c':'nb';}
+
+  const items=[
+    {i:'📊',bg:'rgba(45,217,143,.1)',t:'Buffer Hit Ratio',r:g('buffer cache hit ratio'),pg:'memoria'},
+    {i:'🧠',bg:'rgba(56,189,248,.1)',t:'Page Life Expectancy',r:g('page life expectancy'),pg:'memoria'},
+    {i:'🔒',bg:'rgba(255,77,109,.1)',t:'Sessões Bloqueadas',r:g('sessoes bloqueadas agora'),pg:'locks'},
+    {i:'💀',bg:'rgba(255,77,109,.1)',t:'Deadlocks/sec',r:g('deadlocks/sec'),pg:'locks'},
+    {i:'🔍',bg:'rgba(245,166,35,.1)',t:'Missing Indexes',r:g('missing indexes'),pg:'midx'},
+    {i:'💾',bg:'rgba(255,77,109,.1)',t:'Backups Atrasados',r:g('databases sem backup recente'),pg:'backups'},
+    {i:'⚙️',bg:'rgba(232,97,58,.1)',t:'Jobs com Falha',r:g('jobs com falha'),pg:'jobs'},
+    {i:'🧩',bg:'rgba(124,92,252,.1)',t:'Índices Frag >30%',r:g('indices fragmentados >30%'),pg:'frag'},
+  ];
+  document.getElementById('dgrid').innerHTML=items.map(it=>`
+    <div class="di" onclick="go('${it.pg}')">
+      <div class="dico" style="background:${it.bg}">${it.i}</div>
+      <div class="dbody"><div class="dtitle">${it.t}</div><div class="dval">${it.r.val||'—'}</div></div>
+      ${bdg(sc(it.r.sts),sl(it.r.sts))}
+    </div>`).join('');
+
+  document.getElementById('ov-waits').innerHTML=D.waits.slice(0,5).map((r,i)=>`<tr class="cr" onclick="openWait(${i})">
+    <td class="mono trunc">${r.met}</td>
+    <td class="mono">${r.val.match(/total=([\d.]+)s/)?.[1]||'—'}</td>
+    <td class="mono">${r.val.match(/avg=([\d.]+)ms/)?.[1]||'—'}</td>
+    <td>${bdg(sc(r.sts),sl(r.sts))}</td>
+  </tr>`).join('')||`<tr><td colspan="4" class="empty">Sem dados</td></tr>`;
+
+  document.getElementById('ov-midx').innerHTML=D.midx.slice(0,5).map((r,i)=>`<tr class="cr" onclick="openMidx(${i})">
+    <td class="mono trunc">${r.met}</td>
+    <td class="mono">${r.val.match(/impacto=(\d+)/)?.[1]||'—'}</td>
+    <td class="mono">${r.val.match(/seeks=(\d+)/)?.[1]||'—'}</td>
+    <td>${bdg(sc(r.sts),sl(r.sts))}</td>
+  </tr>`).join('')||`<tr><td colspan="4" class="empty">Sem missing indexes</td></tr>`;
+}
+
+function renderServer(){
+  document.getElementById('tb-server').innerHTML=D.server.map(r=>`<tr>
+    <td class="mono">${r.met}</td><td class="mono">${r.val}</td>
+    <td style="font-size:11px;color:var(--muted)">${r.det||'—'}</td>
+  </tr>`).join('')||empty(3);
+}
+
+function renderDatabases(){
+  document.getElementById('tb-db').innerHTML=D.databases.map(r=>{
+    const st=r.val.match(/status=(\w+)/)?.[1]||'—';
+    const rec=r.val.match(/recovery=(\w+)/)?.[1]||'—';
+    const cmp=r.val.match(/compat=(\d+)/)?.[1]||'—';
+    const rcsi=r.det.match(/snapshot=(\d)/)?.[1]||'0';
+    const ac=r.det.match(/auto_close=(\d)/)?.[1]||'0';
+    const lrw=r.det.match(/log_reuse=(\w+)/)?.[1]||'—';
+    const isW=r.sts!=='OK'?'1':'0';
+    return`<tr class="cr" data-w="${isW}" onclick="openModal('${r.met}','Database',\`<div class='qblock'>${r.det}</div>\`)">
+      <td class="mono">${r.met}</td>
+      <td>${st==='ONLINE'?bdg('bok',st):bdg('bcrit',st)}</td>
+      <td><span class="mono">${rec}</span></td><td class="mono">${cmp}</td>
+      <td>${rcsi==='1'?bdg('bok','ON'):bdg('bwarn','OFF')}</td>
+      <td>${ac==='1'?bdg('bwarn','ON'):bdg('bok','OFF')}</td>
+      <td class="mono" style="font-size:10px">${lrw}</td>
+    </tr>`;
+  }).join('')||empty(7);
+}
+
+function renderDiscos(){
+  document.getElementById('tb-dsk').innerHTML=D.discos.map(r=>{
+    const tot=r.val.match(/total_gb=([\d.]+)/)?.[1]||'0';
+    const liv=r.val.match(/livre_gb=([\d.]+)/)?.[1]||'0';
+    const uso=r.val.match(/usado_pct=([\d.]+)/)?.[1]||'0';
+    const col=parseFloat(uso)>90?'var(--crit)':parseFloat(uso)>75?'var(--warn)':'var(--ok)';
+    return`<tr>
+      <td class="mono">${r.met}</td><td class="mono">${tot}</td><td class="mono">${liv}</td>
+      <td class="mono">${uso}%</td><td style="min-width:100px">${bar(parseFloat(uso),col)}</td>
+      <td>${bdg(sc(r.sts),sl(r.sts))}</td>
+    </tr>`;
+  }).join('')||empty(6);
+}
+
+function renderArquivos(){
+  document.getElementById('tb-files').innerHTML=D.arquivos.map((r,i)=>{
+    const tp=r.val.match(/tipo=(\w+)/)?.[1]||'—';
+    const sz=r.val.match(/tamanho_mb=([\d.]+)/)?.[1]||'—';
+    const ag=r.val.match(/autogrowth=([^\s]+)/)?.[1]||'—';
+    const ms=r.det.match(/max=([^\s]+)/)?.[1]||'—';
+    return`<tr class="cr" onclick="openModal('${r.met}','Arquivo',\`<div class='qblock'>${r.det}</div><ul class='fl'><li>Evite auto-growth em %% — use tamanho fixo</li><li>Dados e log em discos separados</li></ul>\`)">
+      <td class="mono trunc">${r.met}</td><td>${bdg('binfo',tp)}</td>
+      <td class="mono">${sz}</td><td class="mono">${ag}</td>
+      <td class="mono" style="font-size:10px">${ms}</td>
+      <td>${bdg(sc(r.sts),sl(r.sts))}</td>
+    </tr>`;
+  }).join('')||empty(6);
+}
+
+function renderDbSize(){
+  document.getElementById('tb-dbsz').innerHTML=D.dbsize.map(r=>{
+    const dm=r.val.match(/dados_mb=([\d.]+)/)?.[1]||'0';
+    const lm=r.val.match(/log_mb=([\d.]+)/)?.[1]||'0';
+    const tm=r.val.match(/total_mb=([\d.]+)/)?.[1]||'0';
+    const fi=r.det.match(/arquivos=(\d+)/)?.[1]||'—';
+    const rc=r.det.match(/recovery=(\w+)/)?.[1]||'—';
+    return`<tr><td class="mono">${r.met}</td><td class="mono">${dm}</td><td class="mono">${lm}</td>
+      <td class="mono">${tm}</td><td class="mono">${fi}</td><td>${bdg('binfo',rc)}</td></tr>`;
+  }).join('')||empty(6);
+}
+
+function renderTabelas(){
+  document.getElementById('tb-tbl').innerHTML=D.tabelas.map((r,i)=>{
+    const tm=r.val.match(/total_mb=([\d.]+)/)?.[1]||'0';
+    const dm=r.val.match(/dados_mb=([\d.]+)/)?.[1]||'0';
+    const im=r.val.match(/index_mb=([\d.]+)/)?.[1]||'0';
+    const li=r.det.match(/linhas~(\d+)/)?.[1]||'—';
+    return`<tr class="cr" onclick="openModal('${r.met}','Tabela',\`<div class='mg'><div class='ms2'><div class='msl'>Total</div><div class='msv'>${tm}MB</div></div><div class='ms2'><div class='msl'>Linhas~</div><div class='msv'>${n(li)}</div></div></div>\`)">
+      <td class="mono">${r.met}</td><td class="mono">${tm}MB</td>
+      <td class="mono">${dm}MB</td><td class="mono">${im}MB</td>
+      <td class="mono">${n(li)}</td><td>${bdg(sc(r.sts),sl(r.sts))}</td>
+    </tr>`;
+  }).join('')||empty(6);
+}
+
+function renderFrag(){
+  document.getElementById('tb-frag').innerHTML=D.frag.map((r,i)=>{
+    const pct=parseFloat(r.val.match(/([\d.]+)% frag/)?.[1]||0);
+    const pg=r.val.match(/paginas=(\d+)/)?.[1]||'—';
+    return`<tr class="cr" data-w="${pct>10?'1':'0'}" data-pct="${pct}" onclick="openModal('${r.met}','Fragmentação',\`<div class='ms2' style='margin-bottom:12px'><div class='msl'>Fragmentação</div><div class='msv ${pct>30?'c':'w'}'>${pct}%</div></div><div class='qb'>${(r.det||'').replace(/'/g,"\'")}</div><ul class='fl'><li>&gt;30%: REBUILD — reconstrói completamente</li><li>10-30%: REORGANIZE — in-place, sem lock</li><li>Use ONLINE=ON em produção</li></ul>\`)">
+      <td class="mono trunc">${r.met}</td>
+      <td><div class="barw"><div class="barbg"><div class="barf" style="width:${Math.min(100,pct)}%;background:${pct>30?'var(--crit)':pct>10?'var(--warn)':'var(--ok)'}"></div></div><span class="barv">${pct}%</span></div></td>
+      <td class="mono">${n(pg)}</td><td>${bdg(sc(r.sts),sl(r.sts))}</td>
+    </tr>`;
+  }).join('')||`<tr><td colspan="4" class="empty"><strong>Sem fragmentação significativa</strong>Ótimo!</td></tr>`;
+}
+
+function renderMemoria(){
+  const maxV=Math.max(...D.memoria.map(r=>parseFloat(r.val.replace(/[^0-9.]/g,''))||0),1);
+  document.getElementById('tb-mem').innerHTML=D.memoria.map(r=>{
+    const v=parseFloat(r.val.replace(/[^0-9.]/g,''))||0;
+    return`<tr><td class="mono">${r.met}</td><td class="mono">${r.val}</td>
+      <td style="min-width:100px">${bar(Math.round(v/maxV*100),'var(--info)')}</td>
+      <td>${bdg(sc(r.sts),sl(r.sts))}</td></tr>`;
+  }).join('')||empty(4);
+}
+
+let cpuChartInstance = null;
+
+function renderCpu(){
+  const tb = document.getElementById('tb-cpu');
+
+  // Extrai arrays para o gráfico — detalhe tem formato "sql|outros|idle"
+  const labels=[], sqlArr=[], outArr=[], idleArr=[];
+  D.cpu.forEach(r=>{
+    labels.push(r.met.length>16 ? r.met.slice(11) : r.met); // só HH:MM:SS
+    const parts=(r.det||'0|0|0').split('|');
+    sqlArr.push(parseInt(parts[0])||0);
+    outArr.push(parseInt(parts[1])||0);
+    idleArr.push(parseInt(parts[2])||0);
+  });
+
+  // Gráfico Chart.js
+  if(cpuChartInstance) cpuChartInstance.destroy();
+  const canvas=document.getElementById('cpuChart');
+  if(canvas && sqlArr.length>0){
+    cpuChartInstance=new Chart(canvas,{
+      type:'line',
+      data:{
+        labels,
+        datasets:[
+          {label:'SQL Server CPU (%)',data:sqlArr,
+           borderColor:'#e8613a',backgroundColor:'rgba(232,97,58,0.15)',
+           borderWidth:2,tension:0.4,fill:true,pointRadius:0,pointHitRadius:6},
+          {label:'Outros Processos (%)',data:outArr,
+           borderColor:'#f0a050',backgroundColor:'rgba(240,160,80,0.1)',
+           borderWidth:2,tension:0.4,fill:true,pointRadius:0,pointHitRadius:6},
+          {label:'CPU Ociosa (%)',data:idleArr,
+           borderColor:'#2dd98f',backgroundColor:'rgba(45,217,143,0.08)',
+           borderWidth:1.5,tension:0.4,fill:true,pointRadius:0,pointHitRadius:6}
+        ]
+      },
+      options:{
+        responsive:true,
+        maintainAspectRatio:false,
+        plugins:{
+          legend:{position:'top',labels:{color:'#e8eaf0',usePointStyle:true,padding:14,font:{family:"'DM Sans',sans-serif",size:12}}},
+          title:{display:true,text:'Utilização de CPU — ring buffer do SQL Server',color:'#e8eaf0',font:{size:14,family:"'DM Sans',sans-serif",weight:'500'}},
+          tooltip:{mode:'index',intersect:false,
+            backgroundColor:'rgba(18,23,32,0.95)',borderColor:'rgba(255,255,255,0.1)',borderWidth:1,
+            titleColor:'#e8eaf0',bodyColor:'#7a8099',padding:10,
+            callbacks:{label:ctx=>`${ctx.dataset.label}: ${ctx.parsed.y}%`}}
+        },
+        scales:{
+          x:{ticks:{color:'#7a8099',maxTicksLimit:12,maxRotation:0,font:{size:10}},
+             grid:{color:'rgba(255,255,255,0.04)'},border:{color:'rgba(255,255,255,0.07)'}},
+          y:{min:0,max:100,
+             ticks:{color:'#7a8099',callback:v=>v+'%',font:{size:10}},
+             grid:{color:'rgba(255,255,255,0.06)'},border:{color:'rgba(255,255,255,0.07)'}}
+        },
+        interaction:{mode:'nearest',axis:'x',intersect:false},
+        animation:{duration:600}
+      }
+    });
+  } else if(canvas && sqlArr.length===0){
+    const ctx=canvas.getContext('2d');
+    ctx.fillStyle='#7a8099';ctx.font="14px 'DM Sans',sans-serif";ctx.textAlign='center';
+    ctx.fillText('Sem dados de CPU — importe o assessment',canvas.width/2,120);
+  }
+
+  // Tabela detalhada
+  tb.innerHTML=D.cpu.map(r=>{
+    const sql=r.val.match(/sql=(\d+)%/)?.[1]||'0';
+    const out=r.val.match(/outros=(\d+)%/)?.[1]||'0';
+    const idl=r.val.match(/idle=(\d+)%/)?.[1]||'0';
+    const tot=100-parseInt(idl);
+    return`<tr>
+      <td class="mono">${r.met}</td>
+      <td><div class="barw"><div class="barbg"><div class="barf" style="width:${sql}%;background:${parseInt(sql)>80?'var(--crit)':parseInt(sql)>60?'var(--warn)':'var(--accent)'}"></div></div><span class="barv">${sql}%</span></div></td>
+      <td class="mono">${out}%</td><td class="mono">${idl}%</td><td class="mono">${tot}%</td>
+      <td>${bdg(sc(r.sts),sl(r.sts))}</td>
+    </tr>`;
+  }).join('')||empty(6);
+}
+
+function renderIo(){
+  document.getElementById('tb-io').innerHTML=D.io.map((r,i)=>{
+    const rm=r.val.match(/read_ms=([\d.]+)/)?.[1]||'0';
+    const wm=r.val.match(/write_ms=([\d.]+)/)?.[1]||'0';
+    const reads=r.val.match(/reads=(\d+)/)?.[1]||'0';
+    const writes=r.val.match(/writes=(\d+)/)?.[1]||'0';
+    const tp=r.det.match(/tipo=(\w+)/)?.[1]||'—';
+    const isW=r.sts!=='OK'?'1':'0';
+    return`<tr class="cr" data-w="${isW}" onclick="openModal('${r.met}','I/O Latência',\`<div class='mg'><div class='ms2'><div class='msl'>Read ms</div><div class='msv ${parseFloat(rm)>50?'c':parseFloat(rm)>20?'w':'o'}'>${rm}ms</div></div><div class='ms2'><div class='msl'>Write ms</div><div class='msv'>${wm}ms</div></div></div><div class='qb'>${r.det}</div><ul class='fl'><li>Read &gt;20ms: mover para SSD/NVMe</li><li>Separar dados e log em discos diferentes</li></ul>\`)">
+      <td class="mono trunc">${r.met}</td>
+      <td class="mono" style="color:${parseFloat(rm)>50?'var(--crit)':parseFloat(rm)>20?'var(--warn)':'var(--ok)'}">${rm}ms</td>
+      <td class="mono">${wm}ms</td><td class="mono">${n(reads)}</td><td class="mono">${n(writes)}</td>
+      <td>${bdg('binfo',tp)}</td><td>${bdg(sc(r.sts),sl(r.sts))}</td>
+    </tr>`;
+  }).join('')||empty(7);
+}
+
+function renderWaits(){
+  document.getElementById('tb-wt').innerHTML=D.waits.map((r,i)=>{
+    const tot=r.val.match(/total=([\d.]+)s/)?.[1]||'0';
+    const avg=r.val.match(/avg=([\d.]+)ms/)?.[1]||'0';
+    const max=r.val.match(/max=([\d.]+)ms/)?.[1]||'0';
+    const occ=r.det.match(/ocorrencias=(\d+)/)?.[1]||'0';
+    return`<tr class="cr" data-wt="${r.met}" onclick="openWait(${i})">
+      <td class="mono">${i+1}</td><td class="mono trunc" style="max-width:190px">${r.met}</td>
+      <td class="mono">${tot}s</td>
+      <td class="mono" style="color:${parseFloat(avg)>500?'var(--crit)':parseFloat(avg)>50?'var(--warn)':'var(--ok)'}">${avg}ms</td>
+      <td class="mono">${max}ms</td><td class="mono">${n(occ)}</td>
+      <td>${bdg(sc(r.sts),sl(r.sts))}</td>
+    </tr>`;
+  }).join('')||empty(7);
+}
+
+function openWait(i){
+  const r=D.waits[i];if(!r)return;
+  const fixes={PAGEIOLATCH:'Disco lento — verificar latência I/O, mover para SSD',
+    LCK:'Lock contention — revisar queries longas e índices',
+    CXPACKET:'Paralelismo excessivo — reduzir MAXDOP ou aumentar cost threshold',
+    ASYNC_NETWORK_IO:'App lenta consumindo resultados — revisar result sets',
+    WRITELOG:'Log em disco lento — mover LDF para SSD dedicado',
+    SOS_SCHEDULER_YIELD:'CPU saturada — verificar queries sem índice',
+    RESOURCE_SEMAPHORE:'Pressão de memória — aumentar max server memory',
+    THREADPOOL:'Worker threads esgotadas — aumentar max worker threads'};
+  const fix=Object.entries(fixes).find(([k])=>r.met.includes(k));
+  openModal(r.met,'Wait Statistics',`
+    <div class="mg">
+      <div class="ms2"><div class="msl">Total</div><div class="msv">${r.val.match(/total=([\d.]+)s/)?.[1]||'—'}s</div></div>
+      <div class="ms2"><div class="msl">Média</div><div class="msv ${sc(r.sts).replace('b','')}">${r.val.match(/avg=([\d.]+)ms/)?.[1]||'—'}ms</div></div>
+      <div class="ms2"><div class="msl">Máximo</div><div class="msv">${r.val.match(/max=([\d.]+)ms/)?.[1]||'—'}ms</div></div>
+      <div class="ms2"><div class="msl">Ocorrências</div><div class="msv">${r.det.match(/ocorrencias=(\d+)/)?.[1]||'—'}</div></div>
+    </div>
+    ${fix?`<ul class="fl"><li>${fix[1]}</li></ul>`:''}
+    <div class="qb">DBCC SQLPERF('sys.dm_os_wait_stats', CLEAR); -- Zerar após análise</div>`);
+}
+
+function renderSlow(){
+  document.getElementById('tb-sl').innerHTML=D.slow.map((r,i)=>{
+    const avg=r.met.match(/avg_elapsed=([\d.]+)ms/)?.[1]||'0';
+    const exc=r.val.match(/exec=(\d+)/)?.[1]||'—';
+    const cpu=r.val.match(/avg_cpu=([\d.]+)ms/)?.[1]||'—';
+    const rds=r.val.match(/avg_reads=(\d+)/)?.[1]||'—';
+    return`<tr class="cr" data-w="${parseFloat(avg)>1000?'1':'0'}" data-ms="${avg}" onclick="openSlow(${i})">
+      <td class="mono" style="color:${parseFloat(avg)>5000?'var(--crit)':parseFloat(avg)>1000?'var(--warn)':'var(--ok)'}">${avg}ms</td>
+      <td class="mono">${n(exc)}</td><td class="mono">${cpu}ms</td><td class="mono">${n(rds)}</td>
+      <td class="qcell" title="${r.det}">${r.det}</td>
+    </tr>`;
+  }).join('')||empty(5);
+}
+
+function openSlow(i){
+  const r=D.slow[i];if(!r)return;
+  const avg=r.met.match(/avg_elapsed=([\d.]+)ms/)?.[1]||'0';
+  openModal('Slow Query',`Média ${avg}ms`,`
+    <div class="mg">
+      <div class="ms2"><div class="msl">Avg Elapsed</div><div class="msv ${parseFloat(avg)>5000?'c':parseFloat(avg)>1000?'w':'o'}">${avg}ms</div></div>
+      <div class="ms2"><div class="msl">Execuções</div><div class="msv">${r.val.match(/exec=(\d+)/)?.[1]||'—'}</div></div>
+      <div class="ms2"><div class="msl">Avg CPU</div><div class="msv">${r.val.match(/avg_cpu=([\d.]+)ms/)?.[1]||'—'}ms</div></div>
+      <div class="ms2"><div class="msl">Avg Reads</div><div class="msv">${n(r.val.match(/avg_reads=(\d+)/)?.[1]||'0')}</div></div>
+    </div>
+    <div class="qb">${r.det}</div>
+    <ul class="fl">
+      <li>EXPLAIN: <code>SET STATISTICS IO ON; SET STATISTICS TIME ON;</code></li>
+      <li>Verificar índices cobrindo WHERE e JOIN</li>
+    </ul>`);
+}
+
+function renderLocks(){
+  document.getElementById('tb-lk').innerHTML=D.locks.map((r,i)=>{
+    const sid=r.met.match(/session=(\d+)/)?.[1]||'—';
+    const blk=r.met.match(/bloq_por=(\d+)/)?.[1]||'—';
+    const wt=r.val.match(/wait=([^\s]+)/)?.[1]||'—';
+    const wms=r.val.match(/wait_ms=(\d+)/)?.[1]||'0';
+    const cpu=r.val.match(/cpu=(\d+)/)?.[1]||'—';
+    const rds=r.val.match(/reads=(\d+)/)?.[1]||'—';
+    return`<tr class="cr" onclick="openModal('Session ${sid}','Sessão bloqueada',\`<div class='qb'>${r.det||'—'}</div><ul class='fl'><li>Matar: <code>KILL ${sid};</code></li><li>Ver cadeia: <code>SELECT * FROM sys.dm_exec_requests WHERE blocking_session_id>0;</code></li></ul>\`)">
+      <td class="mono">${sid}</td>
+      <td class="mono" style="color:${blk!=='—'?'var(--crit)':'var(--muted)'}">${blk!=='—'?blk:'—'}</td>
+      <td class="mono" style="font-size:10px">${wt}</td>
+      <td class="mono" style="color:${parseInt(wms)>5000?'var(--crit)':parseInt(wms)>1000?'var(--warn)':'var(--text)'}">${n(wms)}</td>
+      <td class="mono">${n(cpu)}</td><td class="mono">${n(rds)}</td>
+      <td class="qcell">${r.det}</td><td>${bdg(sc(r.sts),sl(r.sts))}</td>
+    </tr>`;
+  }).join('')||`<tr><td colspan="8" class="empty"><strong>Nenhum bloqueio ativo</strong>Ótimo!</td></tr>`;
+
+  document.getElementById('tb-lkcnt').innerHTML=D.lkCnt.map(r=>`<tr>
+    <td class="mono">${r.met}</td><td class="mono">${r.val}</td>
+    <td>${bdg(sc(r.sts),sl(r.sts))}</td>
+  </tr>`).join('')||empty(3);
+}
+
+function renderConexoes(){
+  document.getElementById('tb-cn').innerHTML=D.conexoes.filter(r=>r.met.startsWith('ip_')).map(r=>{
+    const ip=r.met.replace('ip_','');
+    const cn=r.val.match(/conexoes=(\d+)/)?.[1]||'0';
+    const sl=r.val.match(/sleeping=(\d+)/)?.[1]||'0';
+    const ru=r.val.match(/running=(\d+)/)?.[1]||'0';
+    const pg=r.det.match(/prog=([^\s]+)/)?.[1]||'—';
+    const ln=r.det.match(/login=([^\s]+)/)?.[1]||'—';
+    return`<tr><td class="mono">${ip}</td><td class="mono">${cn}</td>
+      <td class="mono">${sl}</td><td class="mono">${ru}</td>
+      <td class="mono trunc">${pg}</td><td class="mono">${ln}</td>
+      <td>${bdg(sc(r.sts),sl(r.sts))}</td></tr>`;
+  }).join('')||empty(7);
+}
+
+function renderMidx(){
+  document.getElementById('tb-mi').innerHTML=D.midx.map((r,i)=>{
+    const imp=r.val.match(/impacto=(\d+)/)?.[1]||'0';
+    const sk=r.val.match(/seeks=(\d+)/)?.[1]||'0';
+    const sc2=r.val.match(/scans=(\d+)/)?.[1]||'0';
+    return`<tr class="cr" onclick="openMidx(${i})">
+      <td class="mono trunc" style="max-width:200px">${r.met}</td>
+      <td class="mono" style="color:${parseInt(imp)>100000?'var(--crit)':parseInt(imp)>10000?'var(--warn)':'var(--text)'}">${n(imp)}</td>
+      <td class="mono">${n(sk)}</td><td class="mono">${n(sc2)}</td>
+      <td>${bdg(sc(r.sts),sl(r.sts))}</td>
+    </tr>`;
+  }).join('')||`<tr><td colspan="5" class="empty"><strong>Nenhum missing index</strong>Ótimo!</td></tr>`;
+}
+
+function openMidx(i){
+  const r=D.midx[i];if(!r)return;
+  openModal('Missing Index',r.met,`
+    <div class="mg">
+      <div class="ms2"><div class="msl">Impacto</div><div class="msv ${sc(r.sts).replace('b','')}">${n(r.val.match(/impacto=(\d+)/)?.[1]||'0')}</div></div>
+      <div class="ms2"><div class="msl">Seeks</div><div class="msv">${n(r.val.match(/seeks=(\d+)/)?.[1]||'0')}</div></div>
+    </div>
+    <div class="qb">${r.det}</div>
+    <ul class="fl">
+      <li>Analise o plano antes de criar — pode haver índice similar</li>
+      <li>Use ONLINE=ON e SORT_IN_TEMPDB=ON em produção</li>
+    </ul>`);
+}
+
+function renderIdxInuteis(){
+  document.getElementById('tb-ii').innerHTML=D.idxinuteis.map((r,i)=>{
+    const sk=r.val.match(/seeks=(\d+)/)?.[1]||'0';
+    const sc2=r.val.match(/scans=(\d+)/)?.[1]||'0';
+    const ud=r.val.match(/updates=(\d+)/)?.[1]||'0';
+    return`<tr class="cr" onclick="openModal('${r.met}','Índice não utilizado',\`<div class='qb'>${r.det||'—'}</div><ul class='fl'><li>Analise se não há queries que usam este índice antes de dropar</li><li>Execute em horário de baixo uso</li></ul>\`)">
+      <td class="mono trunc">${r.met}</td><td class="mono">${n(sk)}</td>
+      <td class="mono">${n(sc2)}</td><td class="mono">${n(ud)}</td>
+      <td>${bdg(sc(r.sts),sl(r.sts))}</td>
+    </tr>`;
+  }).join('')||`<tr><td colspan="5" class="empty"><strong>Nenhum índice inutilizado</strong></td></tr>`;
+}
+
+function renderBackups(){
+  document.getElementById('tb-bk').innerHTML=D.backups.filter(r=>!r.met.endsWith('[LOG]')).map((r,i)=>{
+    const ul=r.val.match(/ultimo=([^\s]+)/)?.[1]||r.val;
+    const ds=r.val.match(/dias_desde=(\d+)/)?.[1]||'—';
+    const sz=r.det.match(/tamanho_mb=([\d.]+)/)?.[1]||'—';
+    const isW=r.sts!=='OK'?'1':'0';
+    return`<tr class="cr" data-w="${isW}" onclick="openModal('${r.met}','Backup',\`<div class='qb'>${r.val}\n${r.det}</div><ul class='fl'><li>Backup FULL diário em produção</li><li>Testar restore periodicamente</li></ul>\`)">
+      <td class="mono">${r.met}</td><td class="mono">${ul}</td>
+      <td class="mono" style="color:${parseInt(ds)>7?'var(--crit)':parseInt(ds)>1?'var(--warn)':'var(--ok)'}">${ds}</td>
+      <td class="mono">${sz==='—'?'—':n(sz)+' MB'}</td>
+      <td>${bdg(sc(r.sts),sl(r.sts))}</td>
+    </tr>`;
+  }).join('')||empty(5);
+}
+
+function renderJobs(){
+  document.getElementById('tb-jb').innerHTML=D.jobs.map((r,i)=>{
+    const st=r.val.match(/status=(\w+)/)?.[1]||'—';
+    const ex=r.val.match(/ultima_exec=([^\s]+\s[^\s]+)/)?.[1]||r.val.match(/ultima_exec=(\S+)/)?.[1]||'—';
+    const re=r.val.match(/resultado=(\w+)/)?.[1]||'—';
+    const du=r.det.match(/duracao_s=(\d+)/)?.[1]||'—';
+    const ct=r.det.match(/categoria=([^\s]+)/)?.[1]||'—';
+    const isFail=re==='FALHOU'?'1':'0';const isDis=st==='DESABILITADO'?'1':'0';
+    return`<tr class="cr" data-fail="${isFail}" data-dis="${isDis}" onclick="openModal('${r.met}','SQL Agent Job',\`<div class='qb'>${r.val}\n${r.det}</div><ul class='fl'><li>Histórico: <code>EXEC msdb.dbo.sp_help_jobhistory @job_name='${r.met}';</code></li><li>Reexecutar: <code>EXEC msdb.dbo.sp_start_job @job_name='${r.met}';</code></li></ul>\`)">
+      <td class="mono">${r.met}</td>
+      <td>${st==='ATIVO'?bdg('bok',st):bdg('bwarn',st)}</td>
+      <td class="mono" style="font-size:10px">${ex}</td>
+      <td>${re==='OK'?bdg('bok',re):re==='FALHOU'?bdg('bcrit',re):bdg('bmut',re)}</td>
+      <td class="mono">${du}</td><td class="mono">${ct}</td>
+    </tr>`;
+  }).join('')||empty(6);
+}
+
+function renderConfig(){
+  document.getElementById('tb-cf').innerHTML=D.config.map((r,i)=>{
+    const isW=r.sts!=='OK'?'1':'0';
+    return`<tr class="cr" data-w="${isW}" onclick="openModal('${r.met}',\`Valor: ${r.val}\`,\`<p style='font-size:12px;color:var(--muted);margin-bottom:14px'>${r.det||'—'}</p><div class='qb'>EXEC sp_configure '${r.met}', <novo_valor>;\nRECONFIGURE WITH OVERRIDE;</div>\`)">
+      <td class="mono" style="color:var(--accent)">${r.met}</td><td class="mono">${r.val}</td>
+      <td style="font-size:11px;color:var(--muted)">${r.det||'—'}</td>
+      <td>${bdg(sc(r.sts),sl(r.sts))}</td>
+    </tr>`;
+  }).join('')||empty(4);
+}
+
+function renderTf(){
+  document.getElementById('tb-tf').innerHTML=D.tf.map(r=>`<tr>
+    <td class="mono" style="color:var(--accent2)">${r.met}</td>
+    <td>${bdg('bok','ATIVA')}</td>
+    <td style="font-size:11px;color:var(--muted)">${r.det||'—'}</td>
+  </tr>`).join('')||`<tr><td colspan="3" class="empty"><strong>Nenhuma trace flag ativa</strong></td></tr>`;
+}
+
+function renderCounters(){
+  document.getElementById('tb-cnt').innerHTML=D.counters.map(r=>`<tr>
+    <td class="mono trunc" style="max-width:260px">${r.met}</td>
+    <td class="mono">${r.val}</td><td>${bdg(sc(r.sts),sl(r.sts))}</td>
+  </tr>`).join('')||empty(3);
+}
+
+// ── PROTHEUS ──
+function renderProtheus(){
+  // Configs
+  document.getElementById('tb-pt-cfg').innerHTML=D.prot_cfg.map((r,i)=>`<tr class="cr" onclick="openModal('${r.met}','Config Protheus',\`<p style='font-size:12px;color:var(--muted);margin-bottom:12px'>${r.det||'—'}</p><div class='qb'>${(r.det||'').replace(/'/g,"\\'")}</div>\`)">
+    <td class="mono" style="color:var(--accent3)">${r.met}</td><td class="mono">${r.val}</td>
+    <td style="font-size:11px;color:var(--muted)">${r.det||'—'}</td>
+    <td>${bdg(sc(r.sts),sl(r.sts))}</td>
+  </tr>`).join('')||`<tr><td colspan="4" class="empty"><strong>Sem dados Protheus</strong>Execute com @banco_protheus informado</td></tr>`;
+
+  // Tabelas
+  document.getElementById('tb-pt-tbl').innerHTML=D.prot_tbl.map(r=>{
+    const tm=r.val.match(/total_mb=([\d.]+)/)?.[1]||'0';
+    const dm=r.val.match(/dados_mb=([\d.]+)/)?.[1]||'0';
+    const im=r.val.match(/index_mb=([\d.]+)/)?.[1]||'0';
+    const li=r.det.match(/linhas~(\d+)/)?.[1]||'—';
+    return`<tr><td class="mono">${r.met.replace('tabela_','')}</td><td class="mono">${tm}MB</td>
+      <td class="mono">${dm}MB</td><td class="mono">${im}MB</td>
+      <td class="mono">${n(li)}</td><td>${bdg(sc(r.sts),sl(r.sts))}</td></tr>`;
+  }).join('')||`<tr><td colspan="6" class="empty">Sem dados</td></tr>`;
+
+  // Deletados
+  document.getElementById('tb-pt-del').innerHTML=D.prot_del.map((r,i)=>`<tr class="cr" onclick="openModal('${r.met.replace('deletados_','')}','Registros Deletados Logicamente',\`<p style='font-size:12px;color:var(--muted);margin-bottom:12px'>Protheus usa deleção lógica (D_E_L_E_T_=''''*''''). Registros deletados acumulam e degradam performance.</p><ul class='fl'><li>Via Protheus: SIGAMDI > Atualizações > Eliminação de Registros Deletados (PACK)</li><li>Via SQL (com cuidado): <code>DELETE FROM ${r.met.replace('deletados_','')} WHERE D_E_L_E_T_=''''*''''</code></li><li>Agendar execução periódica do PACK</li></ul>\`)">
+    <td class="mono">${r.met.replace('deletados_','')}</td>
+    <td class="mono">${r.val.match(/linhas_estimadas~(\d+)/)?.[1]||'—'}</td>
+    <td style="font-size:11px;color:var(--muted)">${r.det||'—'}</td>
+    <td>${bdg(sc(r.sts),sl(r.sts))}</td>
+  </tr>`).join('')||`<tr><td colspan="4" class="empty">Sem tabelas com deleção lógica detectadas</td></tr>`;
+
+  // Heaps
+  document.getElementById('tb-pt-heap').innerHTML=D.prot_heap.map((r,i)=>`<tr class="cr" onclick="openModal('${r.met.replace('heap_','')}','Tabela HEAP',\`<p style='font-size:12px;color:var(--muted);margin-bottom:12px'>Tabela sem índice clusterizado. Full scans em tabelas HEAP grandes são muito lentos.</p><ul class='fl'><li>Use IXCRIA no Protheus para criar índices</li><li>Ou diretamente no SQL Server com CREATE CLUSTERED INDEX</li><li>Verifique com TOTVS o índice recomendado para esta tabela</li></ul>\`)">
+    <td class="mono">${r.met.replace('heap_','')}</td>
+    <td class="mono">${r.val.match(/linhas~(\d+)/)?.[1]||'—'}</td>
+    <td class="mono">${r.val.match(/tamanho_mb=([\d.]+)/)?.[1]||'—'} MB</td>
+    <td>${bdg(sc(r.sts),sl(r.sts))}</td>
+  </tr>`).join('')||`<tr><td colspan="4" class="empty"><strong>Nenhuma heap grande</strong>Ótimo!</td></tr>`;
+
+  // Estatísticas
+  document.getElementById('tb-pt-sts').innerHTML=D.prot_sts.map((r,i)=>`<tr class="cr" onclick="openModal('${r.met.replace('stats_','')}','Estatística Desatualizada',\`<div class='qb'>${(r.det||'').replace(/'/g,"\\'")}</div>\`)">
+    <td class="mono trunc">${r.met.replace('stats_','')}</td>
+    <td class="mono">${r.val.match(/ultima=([^\s]+)/)?.[1]||'NUNCA'}</td>
+    <td class="mono">${r.val.match(/modificacoes=(\d+)/)?.[1]||'—'}</td>
+    <td>${bdg(sc(r.sts),sl(r.sts))}</td>
+  </tr>`).join('')||`<tr><td colspan="4" class="empty"><strong>Estatísticas atualizadas</strong>Ótimo!</td></tr>`;
+
+  // Missing indexes Protheus
+  document.getElementById('tb-pt-midx').innerHTML=D.prot_midx.map((r,i)=>`<tr class="cr" onclick="openModal('Missing Index Protheus',r.met.replace('missing_idx_',''),\`<div class='qb'>${(r.det||'').replace(/'/g,"\\'")}</div><ul class='fl'><li>Analise se não há índice similar antes de criar</li><li>Use ONLINE=ON e SORT_IN_TEMPDB=ON</li></ul>\`)">
+    <td class="mono trunc">${r.met.replace('missing_idx_','')}</td>
+    <td class="mono">${n(r.val.match(/impacto=(\d+)/)?.[1]||'0')}</td>
+    <td>${bdg(sc(r.sts),sl(r.sts))}</td>
+  </tr>`).join('')||`<tr><td colspan="3" class="empty"><strong>Nenhum missing index</strong>Ótimo!</td></tr>`;
+
+  // Recomendações
+  document.getElementById('tb-pt-rec').innerHTML=D.prot_rec.map(r=>`<tr class="cr" onclick="openModal('${r.met}','Recomendação TOTVS',\`<div class='qb'>${(r.det||r.met).replace(/'/g,"\\'")}</div>\`)">
+    <td class="mono" style="color:var(--accent3)">${r.met.replace('rec_','')}</td>
+    <td class="mono">${r.val}</td>
+    <td>${bdg(sc(r.sts),sl(r.sts))}</td>
+    <td class="qcell">${r.det||'—'}</td>
+  </tr>`).join('')||`<tr><td colspan="4" class="empty">Sem recomendações</td></tr>`;
+
+  // SX2 empresas
+  document.getElementById('tb-pt-sx2').innerHTML=D.prot_sx2.map(r=>{
+    const emp=r.met.replace('empresa_','');
+    const fil=r.val.match(/filial=([^\s]+)/)?.[1]||'—';
+    const nom=r.val.match(/nome=([^\s]+)/)?.[1]||'—';
+    return`<tr><td class="mono">${emp}</td><td class="mono">${fil}</td><td class="mono">${nom}</td></tr>`;
+  }).join('')||`<tr><td colspan="3" class="empty">SX2 não encontrada ou sem dados</td></tr>`;
+}
+
+
+// ── INIT ──
+const now=new Date();
+document.getElementById('sf').textContent=now.toLocaleString('pt-BR',{day:'2-digit',month:'2-digit',year:'numeric',hour:'2-digit',minute:'2-digit'});
+loadDemo();
+</script>
+</body>
+</html>

@@ -1232,43 +1232,213 @@ fetch('data.json')
   
   //-- NOVO TRECHO --
 
-<h2>Recomendações da IA</h2>
-<div id="recomendacoes">Carregando recomendações...</div>
+<div id="ia-recommendations-overlay" style="display:none; position:fixed; top:0; right:0; bottom:0; left:260px; background:#070b16; z-index:9999; overflow:auto; padding:32px;">
+  <div style="max-width:1200px; margin:0 auto;">
+    <div style="display:flex; justify-content:space-between; align-items:center; gap:16px; margin-bottom:24px;">
+      <div>
+        <div style="color:#ff8a5b; font-size:12px; text-transform:uppercase; letter-spacing:0.08em;">IA consultiva</div>
+        <h1 style="margin:6px 0 0; color:#fff; font-size:28px;">Recomendações IA</h1>
+      </div>
+      <button id="fechar-recomendacoes-ia" style="background:#111827; color:#fff; border:1px solid #334155; border-radius:10px; padding:10px 14px; cursor:pointer;">
+        Voltar ao dashboard
+      </button>
+    </div>
+
+    <div id="ia-summary" style="display:grid; grid-template-columns:repeat(auto-fit,minmax(180px,1fr)); gap:12px; margin-bottom:24px;"></div>
+
+    <div id="ia-recommendations-list">Carregando recomendações...</div>
+  </div>
+</div>
 
 <script>
-async function carregarRecomendacoes() {
-  const box = document.getElementById('recomendacoes');
+(function () {
+  const overlay = document.getElementById('ia-recommendations-overlay');
+  const summaryBox = document.getElementById('ia-summary');
+  const listBox = document.getElementById('ia-recommendations-list');
+  const closeBtn = document.getElementById('fechar-recomendacoes-ia');
 
-  try {
-    const resp = await fetch('recommendations.json?_=' + Date.now());
+  let menuIA = null;
+  let menuDashboard = null;
 
-    if (!resp.ok) {
-      box.innerHTML = 'Nenhuma recomendação encontrada.';
-      return;
-    }
-
-    const data = await resp.json();
-    const itens = data.recommendations || [];
-
-    if (itens.length === 0) {
-      box.innerHTML = 'Nenhuma recomendação no momento.';
-      return;
-    }
-
-    box.innerHTML = itens.map(item => `
-      <div style="border:1px solid #ccc; padding:10px; margin:10px 0; border-radius:8px;">
-        <strong>${item.title || 'Sem título'}</strong><br>
-        Severidade: ${item.severity || 'n/a'}<br>
-        Status: ${item.status || 'n/a'}<br>
-        Recomendação: ${item.recommendation || 'n/a'}
-      </div>
-    `).join('');
-  } catch (e) {
-    box.innerHTML = 'Erro ao carregar recomendações.';
+  function escapeHtml(text) {
+    return String(text || '')
+      .replaceAll('&', '&amp;')
+      .replaceAll('<', '&lt;')
+      .replaceAll('>', '&gt;')
+      .replaceAll('"', '&quot;')
+      .replaceAll("'", '&#039;');
   }
-}
 
-carregarRecomendacoes();
+  function findElementByText(text) {
+    const els = Array.from(document.querySelectorAll('body *'));
+    return els.find(el => el.children.length === 0 && el.textContent.trim() === text) || null;
+  }
+
+  function applyMenuState(activeIA) {
+    if (menuIA) {
+      menuIA.style.cursor = 'pointer';
+      menuIA.style.opacity = activeIA ? '1' : '0.75';
+      menuIA.style.borderLeft = activeIA ? '3px solid #ff8a5b' : '3px solid transparent';
+      menuIA.style.paddingLeft = '10px';
+    }
+
+    if (menuDashboard) {
+      menuDashboard.style.cursor = 'pointer';
+      menuDashboard.style.opacity = activeIA ? '0.75' : '1';
+      menuDashboard.style.borderLeft = activeIA ? '3px solid transparent' : '3px solid #4ade80';
+      menuDashboard.style.paddingLeft = '10px';
+    }
+  }
+
+  function openRecommendations() {
+    const aside = document.querySelector('aside');
+    if (aside) {
+      overlay.style.left = aside.getBoundingClientRect().right + 'px';
+    }
+    overlay.style.display = 'block';
+    document.body.style.overflow = 'hidden';
+    applyMenuState(true);
+    loadRecommendations();
+  }
+
+  function closeRecommendations() {
+    overlay.style.display = 'none';
+    document.body.style.overflow = '';
+    applyMenuState(false);
+  }
+
+  function createSummaryCard(label, value) {
+    return `
+      <div style="background:#0f172a; border:1px solid #1e293b; border-radius:14px; padding:16px;">
+        <div style="color:#94a3b8; font-size:12px; text-transform:uppercase; letter-spacing:0.06em;">${escapeHtml(label)}</div>
+        <div style="color:#fff; font-size:28px; margin-top:8px; font-weight:700;">${escapeHtml(value)}</div>
+      </div>
+    `;
+  }
+
+  function severityColor(severity) {
+    const s = String(severity || '').toLowerCase();
+    if (s === 'critical' || s === 'critico' || s === 'crítico') return '#ef4444';
+    if (s === 'high' || s === 'alto') return '#f97316';
+    if (s === 'medium' || s === 'medio' || s === 'médio') return '#eab308';
+    return '#22c55e';
+  }
+
+  function renderRecommendations(data) {
+    const summary = data.summary || {};
+    const recs = Array.isArray(data.recommendations) ? data.recommendations : [];
+
+    summaryBox.innerHTML = [
+      createSummaryCard('Risco geral', summary.overall_risk || 'n/a'),
+      createSummaryCard('Novas', summary.new_count ?? 0),
+      createSummaryCard('Persistentes', summary.persistent_count ?? 0),
+      createSummaryCard('Resolvidas', summary.resolved_count ?? 0)
+    ].join('');
+
+    if (!recs.length) {
+      listBox.innerHTML = `
+        <div style="background:#0f172a; border:1px solid #1e293b; border-radius:14px; padding:20px; color:#cbd5e1;">
+          Nenhuma recomendação no momento.
+        </div>
+      `;
+      return;
+    }
+
+    listBox.innerHTML = recs.map(item => {
+      const sev = item.severity || 'low';
+      const color = severityColor(sev);
+
+      return `
+        <div style="background:#0f172a; border:1px solid #1e293b; border-radius:16px; padding:20px; margin-bottom:16px;">
+          <div style="display:flex; justify-content:space-between; align-items:flex-start; gap:12px; margin-bottom:10px;">
+            <div>
+              <div style="color:#fff; font-size:20px; font-weight:700;">${escapeHtml(item.title || 'Sem título')}</div>
+              <div style="color:#94a3b8; margin-top:6px;">${escapeHtml(item.status || 'new')}</div>
+            </div>
+            <span style="background:${color}22; color:${color}; border:1px solid ${color}; border-radius:999px; padding:6px 10px; font-size:12px; font-weight:700; text-transform:uppercase;">
+              ${escapeHtml(sev)}
+            </span>
+          </div>
+
+          <div style="color:#e5e7eb; line-height:1.6;">
+            ${escapeHtml(item.recommendation || 'Sem recomendação.')}
+          </div>
+        </div>
+      `;
+    }).join('');
+  }
+
+  async function loadRecommendations() {
+    listBox.innerHTML = `
+      <div style="background:#0f172a; border:1px solid #1e293b; border-radius:14px; padding:20px; color:#cbd5e1;">
+        Carregando recomendações...
+      </div>
+    `;
+
+    try {
+      const resp = await fetch('recommendations.json?_=' + Date.now());
+      if (!resp.ok) {
+        throw new Error('Arquivo não encontrado');
+      }
+
+      const data = await resp.json();
+      renderRecommendations(data);
+    } catch (err) {
+      summaryBox.innerHTML = '';
+      listBox.innerHTML = `
+        <div style="background:#0f172a; border:1px solid #7f1d1d; border-radius:14px; padding:20px; color:#fecaca;">
+          Não foi possível carregar o arquivo recommendations.json.
+        </div>
+      `;
+    }
+  }
+
+  function insertSidebarMenu() {
+    const visaoGeral = findElementByText('Visão geral');
+
+    if (visaoGeral) {
+      menuDashboard = visaoGeral;
+
+      const newItem = visaoGeral.cloneNode(true);
+      newItem.textContent = 'Recomendações IA';
+      newItem.id = 'menu-recomendacoes-ia';
+
+      visaoGeral.parentNode.insertBefore(newItem, visaoGeral.nextSibling);
+
+      newItem.addEventListener('click', function (e) {
+        e.preventDefault();
+        openRecommendations();
+      });
+
+      visaoGeral.addEventListener('click', function () {
+        closeRecommendations();
+      });
+
+      menuIA = newItem;
+      applyMenuState(false);
+      return;
+    }
+
+    const fallbackBtn = document.createElement('button');
+    fallbackBtn.textContent = 'Recomendações IA';
+    fallbackBtn.style.position = 'fixed';
+    fallbackBtn.style.left = '16px';
+    fallbackBtn.style.bottom = '16px';
+    fallbackBtn.style.zIndex = '10000';
+    fallbackBtn.style.background = '#f97316';
+    fallbackBtn.style.color = '#fff';
+    fallbackBtn.style.border = 'none';
+    fallbackBtn.style.borderRadius = '10px';
+    fallbackBtn.style.padding = '10px 14px';
+    fallbackBtn.style.cursor = 'pointer';
+    fallbackBtn.onclick = openRecommendations;
+    document.body.appendChild(fallbackBtn);
+    menuIA = fallbackBtn;
+  }
+
+  closeBtn.addEventListener('click', closeRecommendations);
+  insertSidebarMenu();
+})();
 </script>
   
 </body>

@@ -18,8 +18,8 @@
 *{box-sizing:border-box;margin:0;padding:0;}
 html{scroll-behavior:smooth;}
 body{background:var(--bg);color:var(--text);font-family:'DM Sans',sans-serif;font-size:14px;line-height:1.6;min-height:100vh;}
-body::before{content:'';position:fixed;inset:0;background-image:linear-gradient(var(--grid) 1px,transparent 1px),linear-gradient(90deg,var(--grid) 1px,transparent 1px);background-size:40px 40px;pointer-events:none;z-index:0;}
 .layout{display:flex;min-height:100vh;position:relative;z-index:1;}
+body::before{content:'';posiΩtion:fixed;inset:0;background-image:linear-gradient(var(--grid) 1px,transparent 1px),linear-gradient(90deg,var(--grid) 1px,transparent 1px);background-size:40px 40px;pointer-events:none;z-index:0;}
 
 /* SIDEBAR */
 .sb{width:230px;flex-shrink:0;background:var(--bg2);border-right:1px solid var(--border);position:fixed;top:0;left:0;height:100vh;overflow-y:auto;display:flex;flex-direction:column;z-index:10;}
@@ -1229,6 +1229,48 @@ fetch('data.json')
   })
   .catch(err=>console.log('data.json nao encontrado:',err));
 </script>
+  
+  //-- NOVO TRECHO --
+
+<h2>Recomendações da IA</h2>
+<div id="recomendacoes">Carregando recomendações...</div>
+
+<script>
+async function carregarRecomendacoes() {
+  const box = document.getElementById('recomendacoes');
+
+  try {
+    const resp = await fetch('recommendations.json?_=' + Date.now());
+
+    if (!resp.ok) {
+      box.innerHTML = 'Nenhuma recomendação encontrada.';
+      return;
+    }
+
+    const data = await resp.json();
+    const itens = data.recommendations || [];
+
+    if (itens.length === 0) {
+      box.innerHTML = 'Nenhuma recomendação no momento.';
+      return;
+    }
+
+    box.innerHTML = itens.map(item => `
+      <div style="border:1px solid #ccc; padding:10px; margin:10px 0; border-radius:8px;">
+        <strong>${item.title || 'Sem título'}</strong><br>
+        Severidade: ${item.severity || 'n/a'}<br>
+        Status: ${item.status || 'n/a'}<br>
+        Recomendação: ${item.recommendation || 'n/a'}
+      </div>
+    `).join('');
+  } catch (e) {
+    box.innerHTML = 'Erro ao carregar recomendações.';
+  }
+}
+
+carregarRecomendacoes();
+</script>
+  
 </body>
 </html>
 

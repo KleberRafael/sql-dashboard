@@ -7,7 +7,6 @@ on:
       - "data.json"
       - "index.html"
       - ".github/workflows/deploy.yml"
-      - ".github/workflows/recommendations.py"
   workflow_dispatch:
 
 permissions:
@@ -36,11 +35,6 @@ jobs:
         uses: actions/setup-python@v5
         with:
           python-version: "3.11"
-
-      - name: Install dependencies
-        run: |
-          python -m pip install --upgrade pip
-          pip install openai
 
       - name: Build analysis_window.json
         run: |
@@ -115,7 +109,7 @@ jobs:
                   if "wait" in secao or "wait" in metrica:
                       return str(row.get("valor", ""))[:120]
               return ""
-
+          
           def interesting_rows(rows, limit=40):
               out = []
               for row in rows:
@@ -204,19 +198,26 @@ jobs:
       - name: Create empty review file
         run: echo '{}' > recommendation_review.json
 
-      - name: Generate AI recommendations
-        env:
-          OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
+      - name: Generate test recommendations
         run: |
-          if [ -z "${OPENAI_API_KEY}" ]; then
-            echo '{"summary":{"overall_risk":"low","new_count":0,"persistent_count":0,"resolved_count":0},"recommendations":[]}' > recommendations.json
-          else
-            python .github/workflows/recommendations.py \
-              --window analysis_window.json \
-              --review recommendation_review.json \
-              --out recommendations.json \
-              --model gpt-4o-mini
-          fi
+          cat > recommendations.json <<'EOF'
+          {
+            "summary": {
+              "overall_risk": "low",
+              "new_count": 1,
+              "persistent_count": 0,
+              "resolved_count": 0
+            },
+            "recommendations": [
+              {
+                "title": "Teste de publicacao",
+                "severity": "low",
+                "status": "new",
+                "recommendation": "O workflow conseguiu gerar o arquivo recommendations.json."
+              }
+            ]
+          }
+          EOF
 
       - name: Prepare site
         run: |

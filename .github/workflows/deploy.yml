@@ -1,22 +1,238 @@
-﻿name: Deploy dashboard
+name: Deploy SQL Dashboard + AI Recommendations
+
 on:
   push:
     branches: [main]
+    paths:
+      - "data.json"
+      - "index.html"
+      - ".github/workflows/deploy.yml"
+      - ".github/workflows/generate_recommendations.py"
+  workflow_dispatch:
+
 permissions:
   contents: read
   pages: write
   id-token: write
+
+concurrency:
+  group: pages-${{ github.ref }}
+  cancel-in-progress: true
+
 jobs:
-  deploy:
+  build-and-deploy:
     runs-on: ubuntu-latest
     environment:
       name: github-pages
       url: ${{ steps.deployment.outputs.page_url }}
+
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/configure-pages@v4
-      - uses: actions/upload-pages-artifact@v3
+      - name: Checkout
+        uses: actions/checkout@v4
         with:
-          path: '.'
-      - id: deployment
+          fetch-depth: 20
+
+      - name: Setup Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install openai
+
+      - name: Build analysis_window.json
+        run: |
+          python - <<'PY'
+          import json, subprocess, statistics, math
+          from pathlib import Path
+
+          DATA_FILE = "data.json"
+
+          def run(*args):
+              return subprocess.check_output(args, text=True).strip()
+
+          def load_json(path):
+              return json.loads(Path(path).read_text(encoding="utf-8-sig"))
+
+          def load_json_from_git(sha, repo_path):
+              return json.loads(run("git", "show", f"{sha}:{repo_path}"))
+
+          def git_commits_for_file(repo_path, limit=12):
+              try:
+                  out = run("git", "log", f"-n{limit}", "--format=%H", "--", repo_path)
+                  return [x for x in out.splitlines() if x.strip()]
+              except Exception:
+                  return []
+
+          def rows_from(raw):
+              if isinstance(raw, list):
+                  return raw
+              if isinstance(raw, dict):
+                  for key in ("rows", "data", "items"):
+                      if isinstance(raw.get(key), list):
+                          return raw[key]
+              return []
+
+          def to_float(value):
+              if value is None:
+                  return None
+              if isinstance(value, (int, float)):
+                  return float(value)
+              text = str(value).strip().replace("%", "").replace(",", ".")
+              filtered = "".join(ch for ch in text if ch.isdigit() or ch in ".-")
+              if not filtered or filtered in {"-", ".", "-."}:
+                  return None
+              try:
+                  return float(filtered)
+              except Exception:
+                  return None
+
+          def find_metric(rows, secao_hint, metric_hint):
+              secao_hint = secao_hint.lower()
+              metric_hint = metric_hint.lower()
+              for row in rows:
+                  secao = str(row.get("secao", "")).lower()
+                  metrica = str(row.get("metrica", "")).lower()
+                  if secao_hint in secao and metric_hint in metrica:
+                      return to_float(row.get("valor"))
+              return None
+
+          def count_status(rows, secao_hint, status_hint):
+              n = 0
+              for row in rows:
+                  secao = str(row.get("secao", "")).lower()
+                  status = str(row.get("status", "")).lower()
+                  if secao_hint.lower() in secao and status_hint.lower() in status:
+                      n += 1
+              return n
+
+          def extract_top_wait(rows):
+              for row in rows:
+                  secao = str(row.get("secao", "")).lower()
+                  metrica = str(row.get("metrica", "")).lower()
+                  if "wait" in secao or "wait" in metrica:
+                      return str(row.get("valor", ""))[:120]
+              return ""
+
+          def interesting_rows(rows, limit=40):
+              out = []
+              for row in rows:
+                  secao = str(row.get("secao", "")).lower()
+                  status = str(row.get("status", "")).lower()
+                  if status in {"aten", "crit", "alert", "warning"} or any(k in secao for k in ["config", "backup", "job", "trace", "wait", "slow", "lock"]):
+                      out.append({
+                          "secao": row.get("secao"),
+                          "metrica": row.get("metrica"),
+                          "valor": row.get("valor"),
+                          "status": row.get("status"),
+                          "detalhe": row.get("detalhe"),
+                      })
+                  if len(out) >= limit:
+                      break
+              return out
+
+          def normalize(raw):
+              rows = rows_from(raw)
+              return {
+                  "ple_seconds": find_metric(rows, "mem", "ple"),
+                  "buffer_hit_pct": find_metric(rows, "mem", "buffer"),
+                  "cpu_used_pct": find_metric(rows, "cpu", "total") or find_metric(rows, "cpu", "usado"),
+                  "blocked_sessions": find_metric(rows, "lock", "bloq") or 0,
+                  "deadlocks_per_sec": find_metric(rows, "perf", "deadlock") or 0,
+                  "slow_query_attention_count": count_status(rows, "slow", "aten") + count_status(rows, "slow", "crit"),
+                  "backup_attention_count": count_status(rows, "backup", "aten") + count_status(rows, "backup", "crit"),
+                  "jobs_attention_count": count_status(rows, "job", "aten") + count_status(rows, "job", "crit") + count_status(rows, "job", "falhou"),
+                  "config_attention_count": count_status(rows, "config", "aten") + count_status(rows, "config", "crit"),
+                  "critical_row_count": sum(1 for r in rows if str(r.get("status", "")).lower() == "crit"),
+                  "attention_row_count": sum(1 for r in rows if str(r.get("status", "")).lower() in {"aten", "warning", "alert"}),
+                  "top_wait": extract_top_wait(rows),
+                  "raw_rows": len(rows),
+                  "rows_of_interest": interesting_rows(rows),
+              }
+
+          def safe_mean(values):
+              clean = [v for v in values if isinstance(v, (int, float)) and not math.isnan(v)]
+              return round(statistics.mean(clean), 2) if clean else None
+
+          def diff(curr, prev):
+              out = {}
+              for k, v in curr.items():
+                  pv = prev.get(k)
+                  if isinstance(v, (int, float)) and isinstance(pv, (int, float)):
+                      out[k] = round(v - pv, 2)
+              return out
+
+          current_raw = load_json(DATA_FILE)
+          commits = git_commits_for_file(DATA_FILE, 12)
+          history = []
+          for sha in commits:
+              try:
+                  history.append(normalize(load_json_from_git(sha, DATA_FILE)))
+              except Exception:
+                  pass
+
+          if not history:
+              history = [normalize(current_raw)]
+
+          current = history[0]
+          previous = history[1] if len(history) > 1 else {}
+
+          numeric_keys = [k for k, v in current.items() if isinstance(v, (int, float))]
+          baseline_15m = {k: safe_mean([h.get(k) for h in history[:3]]) for k in numeric_keys}
+          baseline_1h = {k: safe_mean([h.get(k) for h in history[:12]]) for k in numeric_keys}
+
+          payload = {
+              "current": current,
+              "previous": previous,
+              "delta_vs_previous": diff(current, previous) if previous else {},
+              "baseline_15m": baseline_15m,
+              "baseline_1h": baseline_1h,
+              "history_depth": len(history),
+              "notes": {
+                  "consultive_only": True,
+                  "requires_dba_validation": True,
+                  "rule": "Somente recomendar quando houver evidencia no snapshot atual e persistencia ou piora quando aplicavel."
+              }
+          }
+
+          Path("analysis_window.json").write_text(json.dumps(payload, ensure_ascii=False, indent=2), encoding="utf-8")
+          print("analysis_window.json criado")
+          PY
+
+      - name: Create empty review file
+        run: echo '{}' > recommendation_review.json
+
+      - name: Generate AI recommendations
+        env:
+          OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
+        run: |
+          if [ -z "${OPENAI_API_KEY}" ]; then
+            echo '{"summary":{"overall_risk":"low","new_count":0,"persistent_count":0,"resolved_count":0},"recommendations":[]}' > recommendations.json
+          else
+            python .github/workflows/generate_recommendations.py \
+              --window analysis_window.json \
+              --review recommendation_review.json \
+              --out recommendations.json \
+              --model gpt-4o-mini
+          fi
+
+      - name: Prepare site
+        run: |
+          mkdir -p site
+          cp index.html site/
+          cp data.json site/
+          cp recommendations.json site/
+
+      - name: Configure Pages
+        uses: actions/configure-pages@v5
+
+      - name: Upload Pages artifact
+        uses: actions/upload-pages-artifact@v3
+        with:
+          path: site
+
+      - name: Deploy to GitHub Pages
+        id: deployment
         uses: actions/deploy-pages@v4

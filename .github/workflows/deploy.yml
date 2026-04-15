@@ -7,7 +7,7 @@ on:
       - "data.json"
       - "index.html"
       - ".github/workflows/deploy.yml"
-      - ".github/workflows/generate_recommendations.py"
+      - ".github/workflows/recommendations.py"
   workflow_dispatch:
 
 permissions:
@@ -211,7 +211,7 @@ jobs:
           if [ -z "${OPENAI_API_KEY}" ]; then
             echo '{"summary":{"overall_risk":"low","new_count":0,"persistent_count":0,"resolved_count":0},"recommendations":[]}' > recommendations.json
           else
-            python .github/workflows/generate_recommendations.py \
+            python .github/workflows/recommendations.py \
               --window analysis_window.json \
               --review recommendation_review.json \
               --out recommendations.json \

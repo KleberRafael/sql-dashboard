@@ -7,6 +7,7 @@ on:
       - "data.json"
       - "index.html"
       - ".github/workflows/deploy.yml"
+      - ".github/workflows/recommendations.py"
   workflow_dispatch:
 
 permissions:
@@ -36,10 +37,19 @@ jobs:
         with:
           python-version: "3.11"
 
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install openai
+
       - name: Build analysis_window.json
         run: |
           python - <<'PY'
-          import json, subprocess, statistics, math
+          import json
+          import math
+          import statistics
+          import subprocess
+          from collections import defaultdict
           from pathlib import Path
 
           DATA_FILE = "data.json"
@@ -68,6 +78,36 @@ jobs:
                       if isinstance(raw.get(key), list):
                           return raw[key]
               return []
+
+          def clean_row(row):
+              return {
+                  "secao": row.get("secao"),
+                  "metrica": row.get("metrica"),
+                  "valor": row.get("valor"),
+                  "status": row.get("status"),
+                  "detalhe": row.get("detalhe"),
+              }
+
+          def group_sections(rows):
+              grouped = defaultdict(list)
+              for row in rows:
+                  grouped[str(row.get("secao", "Sem seção"))].append(clean_row(row))
+              return dict(grouped)
+
+          def section_status_summary(rows):
+              summary = defaultdict(lambda: {"ok": 0, "aten": 0, "crit": 0, "other": 0})
+              for row in rows:
+                  secao = str(row.get("secao", "Sem seção"))
+                  status = str(row.get("status", "")).strip().lower()
+                  if status == "ok":
+                      summary[secao]["ok"] += 1
+                  elif status in {"aten", "warning", "alert"}:
+                      summary[secao]["aten"] += 1
+                  elif status == "crit":
+                      summary[secao]["crit"] += 1
+                  else:
+                      summary[secao]["other"] += 1
+              return dict(summary)
 
           def to_float(value):
               if value is None:
@@ -109,22 +149,16 @@ jobs:
                   if "wait" in secao or "wait" in metrica:
                       return str(row.get("valor", ""))[:120]
               return ""
-          
-          def interesting_rows(rows, limit=40):
+
+          def focus_rows(rows):
               out = []
               for row in rows:
                   secao = str(row.get("secao", "")).lower()
                   status = str(row.get("status", "")).lower()
-                  if status in {"aten", "crit", "alert", "warning"} or any(k in secao for k in ["config", "backup", "job", "trace", "wait", "slow", "lock"]):
-                      out.append({
-                          "secao": row.get("secao"),
-                          "metrica": row.get("metrica"),
-                          "valor": row.get("valor"),
-                          "status": row.get("status"),
-                          "detalhe": row.get("detalhe"),
-                      })
-                  if len(out) >= limit:
-                      break
+                  if status in {"aten", "crit", "alert", "warning"} or any(k in secao for k in [
+                      "config", "backup", "job", "trace", "wait", "slow", "lock", "fragment", "missing", "protheus", "cpu", "mem", "latência", "latencia"
+                  ]):
+                      out.append(clean_row(row))
               return out
 
           def normalize(raw):
@@ -139,11 +173,12 @@ jobs:
                   "backup_attention_count": count_status(rows, "backup", "aten") + count_status(rows, "backup", "crit"),
                   "jobs_attention_count": count_status(rows, "job", "aten") + count_status(rows, "job", "crit") + count_status(rows, "job", "falhou"),
                   "config_attention_count": count_status(rows, "config", "aten") + count_status(rows, "config", "crit"),
+                  "missing_index_attention_count": count_status(rows, "missing", "aten") + count_status(rows, "missing", "crit"),
+                  "fragmentation_attention_count": count_status(rows, "fragment", "aten") + count_status(rows, "fragment", "crit"),
                   "critical_row_count": sum(1 for r in rows if str(r.get("status", "")).lower() == "crit"),
                   "attention_row_count": sum(1 for r in rows if str(r.get("status", "")).lower() in {"aten", "warning", "alert"}),
                   "top_wait": extract_top_wait(rows),
                   "raw_rows": len(rows),
-                  "rows_of_interest": interesting_rows(rows),
               }
 
           def safe_mean(values):
@@ -159,11 +194,20 @@ jobs:
               return out
 
           current_raw = load_json(DATA_FILE)
+          current_rows = rows_from(current_raw)
           commits = git_commits_for_file(DATA_FILE, 12)
+
           history = []
-          for sha in commits:
+          previous_rows = []
+          previous_sections = {}
+          for i, sha in enumerate(commits):
               try:
-                  history.append(normalize(load_json_from_git(sha, DATA_FILE)))
+                  snapshot = load_json_from_git(sha, DATA_FILE)
+                  rows = rows_from(snapshot)
+                  if i == 1:
+                      previous_rows = rows
+                      previous_sections = group_sections(rows)
+                  history.append(normalize(snapshot))
               except Exception:
                   pass
 
@@ -172,18 +216,21 @@ jobs:
 
           current = history[0]
           previous = history[1] if len(history) > 1 else {}
-
           numeric_keys = [k for k, v in current.items() if isinstance(v, (int, float))]
-          baseline_15m = {k: safe_mean([h.get(k) for h in history[:3]]) for k in numeric_keys}
-          baseline_1h = {k: safe_mean([h.get(k) for h in history[:12]]) for k in numeric_keys}
 
           payload = {
               "current": current,
               "previous": previous,
               "delta_vs_previous": diff(current, previous) if previous else {},
-              "baseline_15m": baseline_15m,
-              "baseline_1h": baseline_1h,
+              "baseline_15m": {k: safe_mean([h.get(k) for h in history[:3]]) for k in numeric_keys},
+              "baseline_1h": {k: safe_mean([h.get(k) for h in history[:12]]) for k in numeric_keys},
               "history_depth": len(history),
+              "current_section_status_summary": section_status_summary(current_rows),
+              "previous_section_status_summary": section_status_summary(previous_rows),
+              "sections_current": group_sections(current_rows),
+              "sections_previous": previous_sections,
+              "focus_rows_current": focus_rows(current_rows),
+              "focus_rows_previous": focus_rows(previous_rows),
               "notes": {
                   "consultive_only": True,
                   "requires_dba_validation": True,
@@ -191,33 +238,25 @@ jobs:
               }
           }
 
-          Path("analysis_window.json").write_text(json.dumps(payload, ensure_ascii=False, indent=2), encoding="utf-8")
+          Path("analysis_window.json").write_text(
+              json.dumps(payload, ensure_ascii=False, indent=2),
+              encoding="utf-8"
+          )
           print("analysis_window.json criado")
           PY
 
       - name: Create empty review file
         run: echo '{}' > recommendation_review.json
 
-      - name: Generate test recommendations
+      - name: Generate AI recommendations
+        env:
+          OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
         run: |
-          cat > recommendations.json <<'EOF'
-          {
-            "summary": {
-              "overall_risk": "low",
-              "new_count": 1,
-              "persistent_count": 0,
-              "resolved_count": 0
-            },
-            "recommendations": [
-              {
-                "title": "Teste de publicacao",
-                "severity": "low",
-                "status": "new",
-                "recommendation": "O workflow conseguiu gerar o arquivo recommendations.json."
-              }
-            ]
-          }
-          EOF
+          python .github/workflows/recommendations.py \
+            --window analysis_window.json \
+            --review recommendation_review.json \
+            --out recommendations.json \
+            --model gpt-5.4
 
       - name: Prepare site
         run: |
@@ -230,7 +269,7 @@ jobs:
         uses: actions/configure-pages@v5
 
       - name: Upload Pages artifact
-        uses: actions/upload-pages-artifact@v3
+        uses: actions/upload-pages-artifact@v4
         with:
           path: site
 

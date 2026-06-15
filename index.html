@@ -18,8 +18,8 @@
 *{box-sizing:border-box;margin:0;padding:0;}
 html{scroll-behavior:smooth;}
 body{background:var(--bg);color:var(--text);font-family:'DM Sans',sans-serif;font-size:14px;line-height:1.6;min-height:100vh;}
+body::before{content:'';position:fixed;inset:0;background-image:linear-gradient(var(--grid) 1px,transparent 1px),linear-gradient(90deg,var(--grid) 1px,transparent 1px);background-size:40px 40px;pointer-events:none;z-index:0;}
 .layout{display:flex;min-height:100vh;position:relative;z-index:1;}
-body::before{content:'';posiΩtion:fixed;inset:0;background-image:linear-gradient(var(--grid) 1px,transparent 1px),linear-gradient(90deg,var(--grid) 1px,transparent 1px);background-size:40px 40px;pointer-events:none;z-index:0;}
 
 /* SIDEBAR */
 .sb{width:230px;flex-shrink:0;background:var(--bg2);border-right:1px solid var(--border);position:fixed;top:0;left:0;height:100vh;overflow-y:auto;display:flex;flex-direction:column;z-index:10;}
@@ -60,6 +60,10 @@ body::before{content:'';posiΩtion:fixed;inset:0;background-image:linear-gradien
 .btn-prot{background:var(--accent3);color:#fff;}
 .sbox{background:var(--bg3);border:1px solid var(--border2);border-radius:6px;padding:5px 10px;color:var(--text);font-family:'DM Mono',monospace;font-size:11px;width:170px;outline:none;}
 .sbox:focus{border-color:var(--accent);}
+.inst-sel{background:var(--bg3);border:1px solid var(--border2);border-radius:6px;color:var(--text);font-family:'DM Mono',monospace;font-size:11px;padding:5px 10px;outline:none;cursor:pointer;max-width:280px;}
+.inst-sel:focus{border-color:var(--accent);}
+.inst-sel optgroup{background:var(--bg2);color:var(--accent);font-style:normal;}
+.inst-sel option{background:var(--bg2);color:var(--text);}
 
 /* PAGES */
 .page{display:none;padding:26px 30px;}
@@ -222,6 +226,7 @@ textarea:focus{border-color:var(--accent);}
 <div class="main">
   <div class="topbar">
     <div class="tb-left"><div id="ptitle">Dashboard</div><span id="psub">Visão geral</span></div>
+    <select class="inst-sel" id="inst-sel" onchange="onInstanceChange(this.value)" title="Instancia monitorada"></select>
     <div class="tb-chip" id="tb-chip">demo-server | SQL Server —</div>
     <div class="tb-actions">
       <input class="sbox" type="text" placeholder="Buscar..." id="gs" oninput="doSearch(this.value)">
@@ -478,7 +483,7 @@ textarea:focus{border-color:var(--accent);}
       <div style="margin-top:6px;font-size:10px;color:var(--muted);font-family:'DM Mono',monospace" id="prev-cnt"></div>
     </div>
     <div style="margin-top:12px;display:flex;gap:8px;align-items:center;flex-wrap:wrap">
-      <button class="btn btn-p" onclick="importData()">Carregar</button>
+      <button class="btn btn-p" onclick="importAndStore()">Adicionar instância</button>
       <button class="btn btn-prot" onclick="loadDemo()">Demo (incl. Protheus)</button>
       <button class="btn btn-g" onclick="document.getElementById('idata').value='';document.getElementById('prev-cnt').textContent=''">Limpar</button>
       <span style="font-size:11px;color:var(--muted);font-family:'DM Mono',monospace" id="imp-st"></span>
@@ -500,6 +505,10 @@ const D={server:[],databases:[],discos:[],arquivos:[],dbsize:[],tabelas:[],frag:
          midx:[],idxinuteis:[],backups:[],jobs:[],config:[],tf:[],counters:[],
          prot_cfg:[],prot_tbl:[],prot_del:[],prot_heap:[],prot_sts:[],
          prot_midx:[],prot_rec:[],prot_sx2:[],resumo:[]};
+
+// store acumulativo de instancias importadas manualmente: slug -> {meta, rawTsv}
+const INSTANCES = {};
+let ACTIVE_SLUG = null;
 
 const PM={overview:{t:'Dashboard',s:'Visão geral'},server:{t:'Server Properties',s:'Versão, patch e SO'},
   databases:{t:'Databases',s:'Status e propriedades'},discos:{t:'Discos',s:'Espaço livre por volume'},
@@ -598,11 +607,46 @@ function updateSrvUI(host,ver,win){
 }
 
 // ── PARSE ──
+// Localiza a coluna 'secao' (celula que comeca com [NN]) e retorna
+// linhas normalizadas: {sec,met,val,sts,det}. Tolera tanto o formato
+// antigo (id|secao|metrica|...) quanto o novo (id|cliente|servidor|
+// instancia|coletado_em|secao|metrica|...).
 function parsePipe(txt){
-  return txt.trim().split('\n')
-    .filter(l=>l.trim()&&!l.match(/^id[\t|]/i)&&!l.startsWith('#'))
-    .map(l=>{const sep=l.includes('\t')?'\t':'|';return l.split(sep).map(c=>c.trim());})
-    .filter(r=>r.length>=4);
+  const lines = txt.trim().split('\n')
+    .filter(l=>l.trim() && !l.match(/^id[\t|]/i) && !l.startsWith('#'));
+  return lines.map(l=>{
+    const sep = l.includes('\t') ? '\t' : '|';
+    const cells = l.split(sep).map(c=>c.trim());
+    // indice da coluna secao = primeira celula no formato [NN] ...
+    let si = cells.findIndex(c=>/^\[\d{2}\]/.test(c));
+    if(si<0) si = 1; // fallback formato antigo
+    return {
+      sec: cells[si]   || '',
+      met: cells[si+1] || '',
+      val: cells[si+2] || '',
+      sts: cells[si+3] || '',
+      det: cells[si+4] || ''
+    };
+  }).filter(r=>r.sec);
+}
+// Extrai identidade (cliente/servidor/instancia) das celulas anteriores a secao,
+// ou dos proprios registros [00] SERVER quando vierem no formato antigo.
+function parseIdentity(txt, rows){
+  const firstData = txt.trim().split('\n').find(l=>l.trim() && !l.match(/^id[\t|]/i) && !l.startsWith('#')) || '';
+  const sep = firstData.includes('\t') ? '\t' : '|';
+  const cells = firstData.split(sep).map(c=>c.trim());
+  const si = cells.findIndex(c=>/^\[\d{2}\]/.test(c));
+  let cliente='', servidor='', instancia='';
+  if(si>=5){ cliente=cells[1]; servidor=cells[2]; instancia=cells[3]; } // formato novo
+  // fallback: pega do [00] SERVER
+  if(!servidor){
+    const h = rows.find(r=>r.sec==='[00] SERVER' && r.met==='hostname');
+    const i = rows.find(r=>r.sec==='[00] SERVER' && r.met==='instancia');
+    servidor = h?h.val:'SERVIDOR';
+    instancia = i?i.val:'MSSQLSERVER';
+  }
+  if(!cliente) cliente='(sem cliente)';
+  return {cliente, servidor, instancia, slug: (cliente+'|'+servidor+'|'+instancia)};
 }
 function previewCnt(el){
   const n=el.value.trim().split('\n').filter(l=>l.trim()&&!l.match(/^id/i)).length;
@@ -617,7 +661,7 @@ function importData(){
   Object.keys(D).forEach(k=>D[k]=[]);
 
   rows.forEach(r=>{
-    const sec=r[1]||'',met=r[2]||'',val=r[3]||'',sts=r[4]||'',det=r[5]||'';
+    const sec=r.sec,met=r.met,val=r.val,sts=r.sts,det=r.det;
     const obj={met,val,sts,det};
 
     if(sec==='[00] SERVER') D.server.push(obj);
@@ -669,6 +713,72 @@ function importData(){
   go('overview');
   document.getElementById('imp-st').textContent=rows.length+' registros carregados';
   toast(rows.length+' registros carregados!');
+}
+
+// ── STORE ACUMULATIVO (import manual de varias instancias) ──
+// Importa o TSV colado, guarda como uma instancia no store (upsert por slug)
+// e atualiza o seletor, SEM apagar as outras ja importadas.
+function importAndStore(){
+  const raw = document.getElementById('idata').value.trim();
+  if(!raw){ toast('Cole os dados primeiro.'); return; }
+  const rows = parsePipe(raw);
+  if(!rows.length){ toast('Nenhum registro reconhecido.'); return; }
+
+  const id = parseIdentity(raw, rows);
+  const novo = !INSTANCES[id.slug];
+  INSTANCES[id.slug] = { meta:id, rawTsv:raw, ts:new Date() };
+
+  rebuildInstanceSelect();
+  document.getElementById('inst-sel').value = id.slug;
+  renderStoredInstance(id.slug);
+
+  const n = Object.keys(INSTANCES).length;
+  document.getElementById('imp-st').textContent =
+    (novo?'Instancia adicionada: ':'Instancia atualizada: ') +
+    id.cliente+' / '+id.servidor+' \\ '+id.instancia +
+    '  —  '+n+' instancia(s) no painel';
+  toast((novo?'Adicionada: ':'Atualizada: ')+id.servidor+' \\ '+id.instancia);
+  // limpa a caixa para colar a proxima
+  document.getElementById('idata').value='';
+  document.getElementById('prev-cnt').textContent='';
+}
+
+// reconstroi o <select> a partir do store, agrupado por cliente
+function rebuildInstanceSelect(){
+  const sel = document.getElementById('inst-sel');
+  if(!sel) return;
+  sel.style.display='';
+  sel.innerHTML='';
+  const list = Object.values(INSTANCES).map(x=>x.meta);
+  list.sort((a,b)=>(a.cliente+a.instancia).localeCompare(b.cliente+b.instancia));
+  const groups={};
+  list.forEach(m=>{ (groups[m.cliente]=groups[m.cliente]||[]).push(m); });
+  Object.keys(groups).forEach(cli=>{
+    const og=document.createElement('optgroup'); og.label=cli;
+    groups[cli].forEach(m=>{
+      const o=document.createElement('option');
+      o.value=m.slug; o.textContent=m.servidor+' \\ '+m.instancia;
+      og.appendChild(o);
+    });
+    sel.appendChild(og);
+  });
+}
+
+// renderiza no painel uma instancia ja guardada no store
+function renderStoredInstance(slug){
+  const inst = INSTANCES[slug];
+  if(!inst) return;
+  ACTIVE_SLUG = slug;
+  document.getElementById('idata').value = inst.rawTsv;
+  importData();              // reusa todo o pipeline de render existente
+  document.getElementById('idata').value='';
+  go('overview');
+}
+
+// chamada unica do seletor: decide entre store (manual) e fetch (manifest)
+function onInstanceChange(value){
+  if(INSTANCES[value]) renderStoredInstance(value);  // veio do store manual
+  else loadInstance(value);                          // veio do manifest (arquivo)
 }
 
 // ── RENDER ALL ──
@@ -1216,293 +1326,171 @@ function renderProtheus(){
   }).join('')||`<tr><td colspan="3" class="empty">SX2 não encontrada ou sem dados</td></tr>`;
 }
 
+// ── DEMO ──
+function loadDemo(){
+  const rows=[
+    ['1','[00] SERVER','versao_sql_server','17.0.2.0','OK','RTM — Developer Edition (64-bit)'],
+    ['2','[00] SERVER','hostname','PROD-DB-01','OK',''],
+    ['3','[00] SERVER','windows_version','10.0 build 17763','OK','sku=Enterprise'],
+    ['4','[00] SERVER','uptime_horas','312','OK','iniciado em 2026-03-27 08:00:00'],
+    ['5','[00] SERVER','cpus_logicos','16','OK','schedulers=16'],
+    ['6','[00] SERVER','ram_servidor_mb','32768','OK',''],
+    ['7','[01] DATABASES','AdventureWorks','status=ONLINE  recovery=FULL  compat=150','OK','collation=SQL_Latin1  auto_close=0  auto_shrink=0  encrypted=0  log_reuse=NOTHING  snapshot=1'],
+    ['8','[01] DATABASES','Northwind','status=ONLINE  recovery=SIMPLE  compat=140','ATENCAO','collation=SQL_Latin1  auto_close=1  auto_shrink=0  encrypted=0  log_reuse=NOTHING  snapshot=0'],
+    ['9','[01] DATABASES','PROTHEUS','status=ONLINE  recovery=FULL  compat=150','ATENCAO','collation=SQL_Latin1  auto_close=0  auto_shrink=0  encrypted=0  log_reuse=LOG_BACKUP  snapshot=0'],
+    ['10','[02] DISCOS','vol_C:_ROWS','total_gb=500  livre_gb=120  usado_pct=76','ATENCAO','mount=C:\\  fs=NTFS'],
+    ['11','[02] DISCOS','vol_D:_LOG','total_gb=200  livre_gb=80  usado_pct=60','OK','mount=D:\\  fs=NTFS'],
+    ['12','[03] ARQUIVOS','PROTHEUS — PROTHEUS_Data','tipo=ROWS  tamanho_mb=18420.50  autogrowth=10%','ATENCAO','path=C:\\Data\\PROTHEUS.mdf  max=ILIMITADO  estado=ONLINE'],
+    ['13','[04] DB SIZE','PROTHEUS','dados_mb=18420.50  log_mb=2240.80  total_mb=20661.30','ATENCAO','arquivos=3  recovery=FULL'],
+    ['14','[05] TOP TABELAS','dbo.SE2010','total_mb=2840.50  dados_mb=1920.30  index_mb=920.20','ATENCAO','linhas~18400882'],
+    ['15','[05] TOP TABELAS','dbo.SD2010','total_mb=1640.20  dados_mb=1120.10  index_mb=520.10','OK','linhas~8200441'],
+    ['16','[06] FRAGMENTACAO','dbo.SE2010.SE2_EMISS','38.4% frag  paginas=11200','CRITICO','ALTER INDEX [SE2_EMISS] ON [dbo].[SE2010] REBUILD WITH (ONLINE=ON);'],
+    ['17','[07] MEMORIA','memoria_total_servidor_mb','32768','OK',''],
+    ['18','[07] MEMORIA','memoria_disponivel_mb','8192','OK','pct_livre=25.0%'],
+    ['19','[07] MEMORIA','sql_server_uso_mb','22528','OK','page_faults=0'],
+    ['20','[07] MEMORIA','page_life_expectancy_s','842','OK','Ideal >= 300s'],
+    ['21','[08] CPU','14:00:00','sql=62%  outros=12%  idle=26%','ATENCAO','62|12|26'],
+    ['22','[08] CPU','13:55:00','sql=38%  outros=8%  idle=54%','OK','38|8|54'],
+    ['23b','[08] CPU','13:50:00','sql=24%  outros=6%  idle=70%','OK','24|6|70'],
+    ['23c','[08] CPU','13:45:00','sql=18%  outros=5%  idle=77%','OK','18|5|77'],
+    ['23d','[08] CPU','13:40:00','sql=72%  outros=14%  idle=14%','ATENCAO','72|14|14'],
+    ['23e','[08] CPU','13:35:00','sql=85%  outros=10%  idle=5%','CRITICO','85|10|5'],
+    ['23f','[08] CPU','13:30:00','sql=91%  outros=7%  idle=2%','CRITICO','91|7|2'],
+    ['23g','[08] CPU','13:25:00','sql=76%  outros=9%  idle=15%','ATENCAO','76|9|15'],
+    ['23h','[08] CPU','13:20:00','sql=44%  outros=8%  idle=48%','OK','44|8|48'],
+    ['23i','[08] CPU','13:15:00','sql=31%  outros=7%  idle=62%','OK','31|7|62'],
+    ['23j','[08] CPU','13:10:00','sql=22%  outros=6%  idle=72%','OK','22|6|72'],
+    ['23k','[08] CPU','13:05:00','sql=19%  outros=5%  idle=76%','OK','19|5|76'],
+    ['23l','[08] CPU','13:00:00','sql=28%  outros=7%  idle=65%','OK','28|7|65'],
+    ['23m','[08] CPU','12:55:00','sql=55%  outros=11%  idle=34%','OK','55|11|34'],
+    ['23n','[08] CPU','12:50:00','sql=68%  outros=13%  idle=19%','ATENCAO','68|13|19'],
+    ['23o','[08] CPU','12:45:00','sql=42%  outros=9%  idle=49%','OK','42|9|49'],
+    ['23','[09] IO LATENCIA','PROTHEUS — PROTHEUS_Data','read_ms=28.40  write_ms=4.20  reads=884821  writes=244210','CRITICO','path=C:\\Data\\PROTHEUS.mdf  tipo=ROWS'],
+    ['24','[09] IO LATENCIA','tempdb — tempdev','read_ms=4.20  write_ms=1.10  reads=8821  writes=44200','OK','path=D:\\tempdb.mdf  tipo=ROWS'],
+    ['25','[10] WAITS','PAGEIOLATCH_SH','total=840.50s  avg=48.58ms  max=892.10ms','ATENCAO','ocorrencias=148231'],
+    ['26','[10] WAITS','LCK_M_X','total=38.20s  avg=310.07ms  max=14200.00ms','CRITICO','ocorrencias=123'],
+    ['27','[10] WAITS','CXPACKET','total=21.40s  avg=0.17ms  max=88.30ms','OK','ocorrencias=125882'],
+    ['28','[11] SLOW QUERIES','avg_elapsed=8420.10ms','exec=84  avg_cpu=6200.40ms  avg_reads=284440  avg_writes=0','CRITICO','SELECT E2_PREFIXO,E2_NUM,E2_PARCELA FROM SE2010 WITH(NOLOCK) WHERE E2_EMISSAO BETWEEN ? AND ? AND D_E_L_E_T_=\' \''],
+    ['29','[12] MISSING INDEXES','[PROTHEUS].[dbo].[SE2010]','impacto=1284820  seeks=14200  scans=0','CRITICO','CREATE INDEX [IX_PROT] ON [PROTHEUS].[dbo].[SE2010] (E2_EMISSAO,E2_TIPO) INCLUDE (E2_VALOR) WITH (ONLINE=ON);'],
+    ['30','[13] LOCKS','session=82  bloq_por=55','wait=LCK_M_X  wait_ms=14200  cpu=220  reads=4821','CRITICO','UPDATE SE2010 SET E2_BAIXA=? WHERE E2_NUM=? AND D_E_L_E_T_=\' \''],
+    ['31','[13] LOCKS','Lock Waits/sec','124','ATENCAO',''],
+    ['32','[13] LOCKS','Number of Deadlocks/sec','2','CRITICO',''],
+    ['33','[14] CONEXOES','ip_10.0.1.100','conexoes=42  sleeping=38  running=4','ATENCAO','prog=SIGAATF  login=protheus_user'],
+    ['34','[14] CONEXOES','ip_10.0.1.101','conexoes=8  sleeping=6  running=2','OK','prog=ReportServer  login=reports'],
+    ['35','[14] CONEXOES','total_sessoes_ativas','52','OK','sleeping=46  running=6  max_config=0'],
+    ['36','[15] BACKUPS','PROTHEUS','ultimo=2026-04-09 03:00:00  dias_desde=1','OK','tipo=D  tamanho_mb=12845.80  comprimido_mb=4282.40'],
+    ['37','[15] BACKUPS','Northwind','ultimo=2026-03-01 03:00:00  dias_desde=40','CRITICO','tipo=D  tamanho_mb=12.40  comprimido_mb=N/A'],
+    ['38','[16] JOBS','Backup PROTHEUS FULL','status=ATIVO  ultima_exec=2026-04-09 03:00  resultado=OK','OK','categoria=Database Maintenance  owner=sa  duracao_s=482'],
+    ['39','[16] JOBS','IndexOptimize PROTHEUS','status=ATIVO  ultima_exec=2026-04-06 02:00  resultado=FALHOU','CRITICO','categoria=Database Maintenance  owner=sa  duracao_s=0'],
+    ['40','[17] TRACE FLAGS','TF1222','ATIVA','OK','Deadlock info detalhada no error log'],
+    ['41','[18] CONFIG','max degree of parallelism','0','ATENCAO','Ideal: cores físicos por NUMA (não 0)'],
+    ['42','[18] CONFIG','cost threshold for parallelism','5','ATENCAO','Ideal >= 25'],
+    ['43','[18] CONFIG','optimize for ad hoc workloads','0','ATENCAO','Ative (1) para reduzir plan cache'],
+    ['44','[18] CONFIG','max server memory (MB)','28672','OK',''],
+    ['45','[19] COUNTERS','SQLServer:Buffer Manager — Buffer cache hit ratio','98','ATENCAO',''],
+    ['46','[19] COUNTERS','SQLServer:Buffer Manager — Page life expectancy','842','OK',''],
+    ['47','[19] COUNTERS','SQLServer:SQL Statistics — Batch Requests/sec','3240','OK',''],
+    ['48','[20] INDICES INUTEIS','dbo.SE2010.IX_SE2010_OLD','seeks=0  scans=0  lookups=0  updates=48821','ATENCAO','DROP INDEX [IX_SE2010_OLD] ON [dbo].[SE2010];'],
+    // Resumo
+    ['49','[22] RESUMO','Buffer Cache Hit Ratio','98%','ATENCAO','Ideal >= 99%'],
+    ['50','[22] RESUMO','Page Life Expectancy','842s','OK','Ideal >= 300s'],
+    ['51','[22] RESUMO','Sessoes bloqueadas agora','1','CRITICO',''],
+    ['52','[22] RESUMO','Deadlocks/sec','2','CRITICO',''],
+    ['53','[22] RESUMO','Missing indexes','1','ATENCAO',''],
+    ['54','[22] RESUMO','Databases sem backup recente','1','CRITICO',''],
+    ['55','[22] RESUMO','Jobs com falha','1','CRITICO',''],
+    ['56','[22] RESUMO','Indices fragmentados >30%','1','ATENCAO',''],
+    ['57','[22] RESUMO','Top wait event','PAGEIOLATCH_SH','ATENCAO','avg=48.58ms'],
+    // Protheus
+    ['58','[21] PROTHEUS','banco_analisado','PROTHEUS','OK',''],
+    ['59','[21] PROTHEUS','read_committed_snapshot','0','CRITICO','TOTVS recomenda RCSI ON. ALTER DATABASE [PROTHEUS] SET READ_COMMITTED_SNAPSHOT ON WITH ROLLBACK IMMEDIATE;'],
+    ['60','[21] PROTHEUS','snapshot_isolation','OFF','ATENCAO','ALTER DATABASE [PROTHEUS] SET ALLOW_SNAPSHOT_ISOLATION ON;'],
+    ['61','[21] PROTHEUS','auto_create_statistics','1','OK','Deve estar ON'],
+    ['62','[21] PROTHEUS','auto_update_statistics','1','OK','Deve estar ON'],
+    ['63','[21] PROTHEUS','auto_update_stats_async','0','ATENCAO','ON evita bloqueio durante update de stats'],
+    ['64','[21] PROTHEUS','compatibility_level','150','OK','Ideal >= 140'],
+    ['65','[21] PROTHEUS','recovery_model','FULL','OK',''],
+    ['66','[21] PROTHEUS','tabela_dbo.SE2010','total_mb=2840.50  dados_mb=1920.30  index_mb=920.20','ATENCAO','linhas~18400882'],
+    ['67','[21] PROTHEUS','tabela_dbo.SD2010','total_mb=1640.20  dados_mb=1120.10  index_mb=520.10','OK','linhas~8200441'],
+    ['68','[21] PROTHEUS','tabela_dbo.SF2010','total_mb=980.40  dados_mb=640.20  index_mb=340.20','OK','linhas~4200882'],
+    ['69','[21] PROTHEUS','deletados_dbo.SE2010','linhas_estimadas~18400882  tem_D_E_L_E_T_=SIM','ATENCAO','Verificar registros deletados — use PACK via Protheus'],
+    ['70','[21] PROTHEUS','deletados_dbo.SD2010','linhas_estimadas~8200441  tem_D_E_L_E_T_=SIM','ATENCAO','Verificar registros deletados — use PACK via Protheus'],
+    ['71','[21] PROTHEUS','heap_dbo.CTO010','linhas~182441  tamanho_mb=42.20','ATENCAO','Tabela HEAP — use IXCRIA no Protheus'],
+    ['72','[21] PROTHEUS','stats_dbo.SE2010.SE2_EMISS','ultima=2026-03-01 03:00:00  modificacoes=2840882','ATENCAO','UPDATE STATISTICS [dbo].[SE2010] [SE2_EMISS] WITH FULLSCAN;'],
+    ['73','[21] PROTHEUS','missing_idx_[PROTHEUS].[dbo].[SE2010]','impacto=1284820  seeks=14200  scans=0','CRITICO','CREATE INDEX [IX_PROT] ON [PROTHEUS].[dbo].[SE2010] (E2_EMISSAO,E2_TIPO) INCLUDE (E2_VALOR) WITH (ONLINE=ON, SORT_IN_TEMPDB=ON);'],
+    ['74','[21] PROTHEUS','rec_rcsi','0','CRITICO','ALTER DATABASE [PROTHEUS] SET READ_COMMITTED_SNAPSHOT ON WITH ROLLBACK IMMEDIATE;'],
+    ['75','[21] PROTHEUS','rec_maxdop','0','CRITICO','TOTVS recomenda MAXDOP=1 para OLTP — EXEC sp_configure \'max degree of parallelism\',1; RECONFIGURE;'],
+    ['76','[21] PROTHEUS','rec_fill_factor','0','ATENCAO','Protheus: use fill factor 80% — reduz fragmentação em tabelas voláteis'],
+    ['77','[21] PROTHEUS','rec_pack_deletados','Executar periodicamente','ATENCAO','SIGAMDI > Atualizações > Eliminação de Registros Deletados (PACK)'],
+    ['78','[21] PROTHEUS','rec_tempdb_files','2 arquivo(s)','ATENCAO','Protheus usa muito TempDB — use 1 arquivo por núcleo (máx 8)'],
+    ['79','[21] PROTHEUS','empresa_01','filial=01  nome=EMPRESA DEMO LTDA','OK','SX2 — empresa/filial'],
+    ['80','[21] PROTHEUS','empresa_01','filial=02  nome=FILIAL SAO PAULO','OK','SX2 — empresa/filial'],
+  ];
+  document.getElementById('idata').value=rows.map(r=>r.join('\t')).join('\n');
+  importData();
+  toast('Demo carregado com dados Protheus!');
+}
 
 // ── INIT ──
 const now=new Date();
 document.getElementById('sf').textContent=now.toLocaleString('pt-BR',{day:'2-digit',month:'2-digit',year:'numeric',hour:'2-digit',minute:'2-digit'});
-fetch('data.json')
-  .then(r=>{ if(!r.ok) throw new Error('404'); return r.json(); })
-  .then(rows=>{
-    const tsv=rows.map(r=>[0,r.secao,r.metrica,r.valor,r.status,r.detalhe].join('\t')).join('\n');
-    document.getElementById('idata').value=tsv;
-    importData();
-  })
-  .catch(err=>console.log('data.json nao encontrado:',err));
-</script>
-  
-  //-- NOVO TRECHO --
+// ── MULTI-INSTANCIA ──
+// Carrega um data-<slug>.json e reusa o pipeline existente (importData/renderAll)
+function loadInstance(file){
+  fetch(file + '?_=' + Date.now())
+    .then(r => { if(!r.ok) throw new Error('sem '+file); return r.json(); })
+    .then(rows => {
+      const tsv = rows.map(r =>
+        [0, r.secao, r.metrica, r.valor, r.status, r.detalhe].join('\t')
+      ).join('\n');
+      document.getElementById('idata').value = tsv;
+      importData();
+      const meta = rows[0] || {};
+      document.getElementById('imp-st').textContent =
+        'Instancia: ' + (meta.cliente||'?') + ' / ' + (meta.servidor||'?') + ' — ' +
+        new Date().toLocaleString('pt-BR');
+    })
+    .catch(() => loadDemo());
+}
 
-  <div id="ia-panel" style="display:none; position:fixed; top:0; right:0; bottom:0; left:280px; background:#050b18; z-index:9999; overflow:auto; padding:28px;">
-  <div style="max-width:1280px; margin:0 auto;">
-    <div style="display:flex; justify-content:space-between; align-items:center; gap:16px; margin-bottom:24px;">
-      <div>
-        <div style="color:#ff8a5b; font-size:12px; text-transform:uppercase; letter-spacing:.08em;">IA consultiva</div>
-        <h1 style="margin:6px 0 0; color:#fff; font-size:28px;">Recomendações IA</h1>
-      </div>
-      <button id="ia-close" style="background:#0f172a; color:#fff; border:1px solid #334155; border-radius:12px; padding:10px 14px; cursor:pointer;">
-        Voltar ao dashboard
-      </button>
-    </div>
-
-    <div id="ia-summary" style="display:grid; grid-template-columns:repeat(auto-fit,minmax(180px,1fr)); gap:14px; margin-bottom:24px;"></div>
-    <div id="ia-list"></div>
-  </div>
-</div>
-
-<script>
-(function () {
-  const panel = document.getElementById('ia-panel');
-  const closeBtn = document.getElementById('ia-close');
-  const summaryBox = document.getElementById('ia-summary');
-  const listBox = document.getElementById('ia-list');
-
-  let sidebarItem = null;
-  let dashboardItem = null;
-
-  function escapeHtml(text) {
-    return String(text || '')
-      .replaceAll('&', '&amp;')
-      .replaceAll('<', '&lt;')
-      .replaceAll('>', '&gt;')
-      .replaceAll('"', '&quot;')
-      .replaceAll("'", '&#039;');
-  }
-
-  function findLeafByText(text) {
-    const wanted = text.trim().toLowerCase();
-    const items = Array.from(document.querySelectorAll('body *'))
-      .filter(el => el.children.length === 0 && el.textContent.trim().toLowerCase() === wanted);
-
-    if (!items.length) return null;
-
-    items.sort((a, b) => {
-      const ar = a.getBoundingClientRect();
-      const br = b.getBoundingClientRect();
-      if (ar.left !== br.left) return ar.left - br.left;
-      return ar.top - br.top;
-    });
-
-    return items[0];
-  }
-
-  function findMenuContainer(el) {
-    return el?.closest('a, button, li, div') || el;
-  }
-
-  function badgeColor(severity) {
-    const s = String(severity || '').toLowerCase();
-    if (s === 'critical' || s === 'crítico' || s === 'critico') return '#ef4444';
-    if (s === 'high' || s === 'alto') return '#f97316';
-    if (s === 'medium' || s === 'médio' || s === 'medio') return '#eab308';
-    return '#22c55e';
-  }
-
-  function makeSummaryCard(label, value) {
-    return `
-      <div style="background:#0f172a; border:1px solid #1e293b; border-radius:16px; padding:18px;">
-        <div style="color:#94a3b8; font-size:12px; text-transform:uppercase; letter-spacing:.06em;">${escapeHtml(label)}</div>
-        <div style="color:#fff; font-size:28px; font-weight:700; margin-top:10px;">${escapeHtml(value)}</div>
-      </div>
-    `;
-  }
-
-  function setMenuActive(active) {
-    if (sidebarItem) {
-      sidebarItem.style.opacity = active ? '1' : '.78';
-      sidebarItem.style.borderLeft = active ? '3px solid #ff8a5b' : '3px solid transparent';
-      sidebarItem.style.paddingLeft = '10px';
-      sidebarItem.style.cursor = 'pointer';
-    }
-    if (dashboardItem) {
-      dashboardItem.style.opacity = active ? '.78' : '1';
-      dashboardItem.style.borderLeft = active ? '3px solid transparent' : '3px solid #22c55e';
-      dashboardItem.style.paddingLeft = '10px';
-      dashboardItem.style.cursor = 'pointer';
-    }
-  }
-
-  function openPanel() {
-    if (dashboardItem) {
-      const rect = dashboardItem.getBoundingClientRect();
-      panel.style.left = Math.max(rect.right + 20, 240) + 'px';
-    }
-    panel.style.display = 'block';
-    document.body.style.overflow = 'hidden';
-    setMenuActive(true);
-    loadRecommendations();
-  }
-
-  function closePanel() {
-    panel.style.display = 'none';
-    document.body.style.overflow = '';
-    setMenuActive(false);
-  }
-
-  function renderRecommendations(data) {
-    const summary = data.summary || {};
-    const recs = Array.isArray(data.recommendations) ? data.recommendations : [];
-
-    summaryBox.innerHTML = [
-      makeSummaryCard('Risco geral', summary.overall_risk || 'n/a'),
-      makeSummaryCard('Novas', summary.new_count ?? 0),
-      makeSummaryCard('Persistentes', summary.persistent_count ?? 0),
-      makeSummaryCard('Resolvidas', summary.resolved_count ?? 0)
-    ].join('');
-
-    if (!recs.length) {
-      listBox.innerHTML = `
-        <div style="background:#0f172a; border:1px solid #1e293b; border-radius:16px; padding:20px; color:#cbd5e1;">
-          Nenhuma recomendação no momento.
-        </div>
-      `;
-      return;
-    }
-
-    listBox.innerHTML = recs.map((item, idx) => {
-      const sev = item.severity || 'low';
-      const color = badgeColor(sev);
-      const detailsId = `ia-detail-${idx}`;
-      const evidence = Array.isArray(item.evidence) ? item.evidence : [];
-
-      return `
-        <div style="background:#0f172a; border:1px solid #1e293b; border-radius:18px; padding:20px; margin-bottom:16px;">
-          <div style="display:flex; justify-content:space-between; align-items:flex-start; gap:12px;">
-            <div>
-              <div style="color:#fff; font-size:22px; font-weight:700;">${escapeHtml(item.title || 'Sem título')}</div>
-              <div style="color:#94a3b8; margin-top:8px;">Status: ${escapeHtml(item.status || 'new')}</div>
-            </div>
-            <div style="display:flex; gap:10px; align-items:center;">
-              <span style="background:${color}22; color:${color}; border:1px solid ${color}; border-radius:999px; padding:6px 10px; font-size:12px; font-weight:700; text-transform:uppercase;">
-                ${escapeHtml(sev)}
-              </span>
-              <button data-target="${detailsId}" class="ia-toggle-btn" style="background:#111827; color:#fff; border:1px solid #334155; border-radius:10px; padding:8px 12px; cursor:pointer;">
-                Ver detalhes
-              </button>
-            </div>
-          </div>
-
-          <div style="color:#e5e7eb; line-height:1.6; margin-top:14px;">
-            ${escapeHtml(item.recommendation || 'Sem recomendação.')}
-          </div>
-
-          <div id="${detailsId}" style="display:none; margin-top:16px; padding-top:16px; border-top:1px solid #243041;">
-            ${
-              evidence.length
-                ? `<div style="margin-bottom:12px;">
-                    <div style="color:#94a3b8; font-size:12px; text-transform:uppercase; margin-bottom:8px;">Evidências</div>
-                    <ul style="margin:0; padding-left:18px; color:#e5e7eb;">
-                      ${evidence.map(ev => `<li style="margin-bottom:6px;">${escapeHtml(ev)}</li>`).join('')}
-                    </ul>
-                   </div>`
-                : ''
-            }
-
-            ${item.why_it_matters ? `
-              <div style="margin-bottom:12px;">
-                <div style="color:#94a3b8; font-size:12px; text-transform:uppercase; margin-bottom:8px;">Por que isso importa</div>
-                <div style="color:#e5e7eb;">${escapeHtml(item.why_it_matters)}</div>
-              </div>
-            ` : ''}
-
-            ${item.suggested_action ? `
-              <div style="margin-bottom:12px;">
-                <div style="color:#94a3b8; font-size:12px; text-transform:uppercase; margin-bottom:8px;">Ação sugerida</div>
-                <div style="color:#e5e7eb;">${escapeHtml(item.suggested_action)}</div>
-              </div>
-            ` : ''}
-
-            ${item.sql_example ? `
-              <div style="margin-bottom:12px;">
-                <div style="color:#94a3b8; font-size:12px; text-transform:uppercase; margin-bottom:8px;">Exemplo SQL</div>
-                <pre style="background:#020617; color:#cbd5e1; border:1px solid #1e293b; border-radius:12px; padding:12px; overflow:auto; white-space:pre-wrap;">${escapeHtml(item.sql_example)}</pre>
-              </div>
-            ` : ''}
-
-            ${item.confidence ? `
-              <div style="color:#94a3b8;">Confiança: <span style="color:#fff;">${escapeHtml(item.confidence)}</span></div>
-            ` : ''}
-
-            ${
-              !evidence.length && !item.why_it_matters && !item.suggested_action && !item.sql_example && !item.confidence
-                ? `<div style="color:#94a3b8;">Sem detalhes adicionais nesta recomendação.</div>`
-                : ''
-            }
-          </div>
-        </div>
-      `;
-    }).join('');
-
-    document.querySelectorAll('.ia-toggle-btn').forEach(btn => {
-      btn.addEventListener('click', function () {
-        const id = this.getAttribute('data-target');
-        const box = document.getElementById(id);
-        const isOpen = box.style.display === 'block';
-        box.style.display = isOpen ? 'none' : 'block';
-        this.textContent = isOpen ? 'Ver detalhes' : 'Ocultar detalhes';
+// Le o manifest.json, popula o seletor (agrupado por cliente) e carrega a 1a instancia
+fetch('manifest.json?_=' + Date.now())
+  .then(r => { if(!r.ok) throw new Error('sem manifest'); return r.json(); })
+  .then(list => {
+    if(!Array.isArray(list) || !list.length) throw new Error('manifest vazio');
+    list.sort((a,b)=>(a.cliente+a.instancia).localeCompare(b.cliente+b.instancia));
+    const sel = document.getElementById('inst-sel');
+    sel.innerHTML = '';
+    const groups = {};
+    list.forEach(m => { (groups[m.cliente] = groups[m.cliente] || []).push(m); });
+    Object.keys(groups).forEach(cli => {
+      const og = document.createElement('optgroup'); og.label = cli;
+      groups[cli].forEach(m => {
+        const o = document.createElement('option');
+        o.value = m.file;
+        o.textContent = m.servidor + ' \\ ' + m.instancia;
+        og.appendChild(o);
       });
+      sel.appendChild(og);
     });
-  }
-
-  async function loadRecommendations() {
-    listBox.innerHTML = `
-      <div style="background:#0f172a; border:1px solid #1e293b; border-radius:16px; padding:20px; color:#cbd5e1;">
-        Carregando recomendações...
-      </div>
-    `;
-
-    try {
-      const resp = await fetch('recommendations.json?_=' + Date.now());
-      if (!resp.ok) throw new Error('Arquivo não encontrado');
-      const data = await resp.json();
-      renderRecommendations(data);
-    } catch (e) {
-      summaryBox.innerHTML = '';
-      listBox.innerHTML = `
-        <div style="background:#0f172a; border:1px solid #7f1d1d; border-radius:16px; padding:20px; color:#fecaca;">
-          Não foi possível carregar o arquivo recommendations.json.
-        </div>
-      `;
-    }
-  }
-
-  function createSidebarEntry() {
-    const visaoLabel = findLeafByText('Visão geral');
-    if (!visaoLabel) return;
-
-    const baseItem = findMenuContainer(visaoLabel);
-    dashboardItem = baseItem;
-
-    const newItem = baseItem.cloneNode(true);
-    newItem.id = 'menu-recomendacoes-ia';
-    newItem.style.cursor = 'pointer';
-
-    const leaf = Array.from(newItem.querySelectorAll('*')).find(el => el.children.length === 0 && el.textContent.trim().toLowerCase() === 'visão geral');
-    if (leaf) {
-      leaf.textContent = 'Recomendações IA';
-    } else {
-      newItem.textContent = 'Recomendações IA';
-    }
-
-    baseItem.parentNode.insertBefore(newItem, baseItem.nextSibling);
-    sidebarItem = newItem;
-    setMenuActive(false);
-
-    newItem.addEventListener('click', function (e) {
-      e.preventDefault();
-      e.stopPropagation();
-      openPanel();
-    });
-
-    baseItem.addEventListener('click', function () {
-      closePanel();
-    });
-  }
-
-  closeBtn.addEventListener('click', closePanel);
-  window.addEventListener('load', createSidebarEntry);
-})();
+    loadInstance(list[0].file);
+  })
+  .catch(() => {
+    // fallback: comportamento antigo (data.json unico) ou demo
+    document.getElementById('inst-sel').style.display = 'none';
+    fetch('data.json')
+      .then(r => { if(!r.ok) throw new Error('sem data.json'); return r.json(); })
+      .then(rows => {
+        const tsv = rows.map(r =>
+          [0, r.secao, r.metrica, r.valor, r.status, r.detalhe].join('\t')
+        ).join('\n');
+        document.getElementById('idata').value = tsv;
+        importData();
+        document.getElementById('imp-st').textContent =
+          'Auto-atualizado: ' + new Date().toLocaleString('pt-BR');
+      })
+      .catch(() => loadDemo());
+  });
 </script>
-  
 </body>
 </html>
-

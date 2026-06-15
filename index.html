@@ -56,6 +56,7 @@ body::before{content:'';position:fixed;inset:0;background-image:linear-gradient(
 .btn-g{background:transparent;color:var(--muted);border:1px solid var(--border2);}
 .btn-g:hover{color:var(--text);}
 .btn-p{background:var(--accent);color:#fff;}
+.btn-ia{background:linear-gradient(135deg,#6d4aff,#9a6bff);color:#fff;font-weight:600;}
 .btn-p:hover{opacity:.85;}
 .btn-prot{background:var(--accent3);color:#fff;}
 .sbox{background:var(--bg3);border:1px solid var(--border2);border-radius:6px;padding:5px 10px;color:var(--text);font-family:'DM Mono',monospace;font-size:11px;width:170px;outline:none;}
@@ -230,6 +231,7 @@ textarea:focus{border-color:var(--accent);}
     <div class="tb-chip" id="tb-chip">demo-server | SQL Server —</div>
     <div class="tb-actions">
       <input class="sbox" type="text" placeholder="Buscar..." id="gs" oninput="doSearch(this.value)">
+      <button class="btn btn-ia" onclick="analisarComIA()" title="Gera um prompt de análise e copia para você colar no Claude.ai">🤖 Analisar com IA</button>
       <button class="btn btn-g" onclick="window.print()">PDF</button>
       <button class="btn btn-p" onclick="go('import')">+ Importar</button>
     </div>
@@ -1429,6 +1431,87 @@ function loadDemo(){
   document.getElementById('idata').value=rows.map(r=>r.join('\t')).join('\n');
   importData();
   toast('Demo carregado com dados Protheus!');
+}
+
+// ── ANALISAR COM IA (Camada 2 - sob demanda, custo zero) ──
+// Monta um prompt de analise de DBA com os dados da instancia ativa e copia
+// para a area de transferencia, pronto para colar no Claude.ai.
+function analisarComIA(){
+  // identifica a instancia ativa
+  const srvRow = D.server.find(r=>r.met==='hostname');
+  const verRow = D.server.find(r=>r.met==='versao_sql_server');
+  const instRow= D.server.find(r=>r.met==='instancia');
+  const servidor = srvRow ? srvRow.val : '(servidor)';
+  const versao   = verRow ? verRow.val : '?';
+  const instancia= instRow? instRow.val: 'MSSQLSERVER';
+
+  // coleta todas as linhas do dataset ativo, marcando severidade
+  const labels = {
+    server:'[00] SERVER', databases:'[01] DATABASES', discos:'[02] DISCOS',
+    arquivos:'[03] ARQUIVOS', dbsize:'[04] DB SIZE', tabelas:'[05] TOP TABELAS',
+    frag:'[06] FRAGMENTACAO', memoria:'[07] MEMORIA', cpu:'[08] CPU',
+    io:'[09] IO LATENCIA', waits:'[10] WAITS', slow:'[11] SLOW QUERIES',
+    midx:'[12] MISSING INDEXES', locks:'[13] LOCKS', lkCnt:'[13] LOCKS',
+    conexoes:'[14] CONEXOES', backups:'[15] BACKUPS', jobs:'[16] JOBS',
+    tf:'[17] TRACE FLAGS', config:'[18] CONFIG', counters:'[19] COUNTERS',
+    idxinuteis:'[20] INDICES INUTEIS', resumo:'[22] RESUMO'
+  };
+
+  const criticos = [];
+  const atencao  = [];
+  const ok       = [];
+  Object.keys(labels).forEach(k=>{
+    (D[k]||[]).forEach(r=>{
+      const linha = `${labels[k]} | ${r.met} | ${r.val} | ${r.det||''}`.trim();
+      const st = (r.sts||'').toUpperCase();
+      if(st==='CRITICO'||st==='CRÍTICO') criticos.push(linha);
+      else if(st==='ATENCAO'||st==='ATENÇÃO'||st==='WARNING'||st==='ALERT') atencao.push(linha);
+      else ok.push(linha);
+    });
+  });
+
+  if(criticos.length===0 && atencao.length===0 && ok.length===0){
+    toast('Sem dados carregados para analisar.');
+    return;
+  }
+
+  // monta o prompt
+  const prompt =
+`Você é um DBA sênior especialista em SQL Server. Analise o assessment abaixo e produza um diagnóstico acionável.
+
+CONTEXTO DO AMBIENTE
+- Servidor: ${servidor}
+- Instância: ${instancia}
+- Versão SQL Server: ${versao}
+- Coletado em: ${new Date().toLocaleString('pt-BR')}
+
+ITENS CRÍTICOS (${criticos.length})
+${criticos.length? criticos.join('\n') : '(nenhum)'}
+
+ITENS EM ATENÇÃO (${atencao.length})
+${atencao.length? atencao.join('\n') : '(nenhum)'}
+
+DEMAIS MÉTRICAS (contexto, ${ok.length} itens)
+${ok.slice(0,80).join('\n')}${ok.length>80? '\n... ('+(ok.length-80)+' itens omitidos)':''}
+
+O QUE PRECISO
+1. As 5 ações mais urgentes, priorizadas por severidade e impacto, com justificativa técnica curta.
+2. Para cada ação, o comando ou abordagem concreta (T-SQL / configuração) que um DBA executaria no SSMS.
+3. Possíveis causas-raiz que liguem vários sintomas (ex.: um wait alto explicando lentidão + locks).
+4. O que NÃO é urgente mas vale acompanhar.
+5. Riscos de cada recomendação — seja honesto sobre o que exige validação antes de aplicar em produção.
+
+Seja específico e direto. Assuma que quem lê é um DBA experiente que valida tudo antes de aplicar.`;
+
+  // copia para a area de transferencia
+  navigator.clipboard.writeText(prompt).then(()=>{
+    toast('Prompt de análise copiado! Cole no Claude.ai (Ctrl+V / Cmd+V).');
+  }).catch(()=>{
+    // fallback se clipboard bloqueado: mostra numa textarea para copiar manual
+    const ta = document.getElementById('idata');
+    if(ta){ go('import'); ta.value = prompt; ta.focus(); ta.select();
+      toast('Prompt gerado na aba Importar — copie manualmente (Ctrl+A, Ctrl+C).'); }
+  });
 }
 
 // ── INIT ──

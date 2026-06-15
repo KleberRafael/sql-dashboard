@@ -18,6 +18,22 @@ $GitExe    = "C:\Program Files\Git\cmd\git.exe"   # caminho ABSOLUTO (conta de s
 
 $ErrorActionPreference = "Stop"
 
+# git escreve mensagens de status normais no stderr. Esta funcao executa o git
+# sem que o PowerShell trate essas mensagens como erro fatal: captura tudo,
+# imprime, e devolve apenas o exit code real para a logica de retry decidir.
+function Invoke-Git {
+    param([Parameter(ValueFromRemainingArguments=$true)] $Args)
+    $old = $ErrorActionPreference
+    $ErrorActionPreference = 'Continue'   # nao transformar stderr em excecao
+    # captura toda a saida (stdout+stderr) num array, guarda o exit code do git
+    # IMEDIATAMENTE, e so depois imprime — assim o pipe nao sobrescreve o codigo
+    $out = & $GitExe @Args 2>&1
+    $code = $LASTEXITCODE
+    $ErrorActionPreference = $old
+    foreach ($line in $out) { Write-Host $line.ToString() }
+    return [int]$code
+}
+
 # 1) roda o assessment e le a tabela ja carimbada
 Invoke-Sqlcmd -ServerInstance $SqlInst -Database dba_admin `
     -Query "EXEC run_assessment @cliente=N'$Cliente';" | Out-Null
@@ -54,21 +70,18 @@ $manifest | ConvertTo-Json -Depth 4 | Set-Content -Encoding UTF8 $manifestPath
 
 # 5) git push com retry/rebase (resolve colisao se 2 instancias do mesmo
 #    cliente derem push quase juntas)
-# Nota: git escreve status normal no stderr. Capturamos com 2>&1 e deixamos
-# o exit code decidir o sucesso, evitando falso-erro no PowerShell e no Agent.
+# Usa Invoke-Git para que mensagens de status do git (que vao p/ stderr)
+# nao virem falso-erro no PowerShell nem no SQL Agent.
 Set-Location $RepoPath
-$saida = & $GitExe add -- "data-$slug.json" "manifest.json" 2>&1
-$saida = & $GitExe commit -m "assessment $slug $(Get-Date -Format s)" --allow-empty 2>&1
-Write-Output $saida
+Invoke-Git add -- "data-$slug.json" "manifest.json" | Out-Null
+Invoke-Git commit -m "assessment $slug $(Get-Date -Format s)" --allow-empty | Out-Null
 
 $maxTentativas = 5
 for ($i=1; $i -le $maxTentativas; $i++) {
-    $saida = & $GitExe push 2>&1
-    if ($LASTEXITCODE -eq 0) { Write-Output "push OK (tentativa $i)"; break }
+    $code = Invoke-Git push
+    if ($code -eq 0) { Write-Output "push OK (tentativa $i)"; break }
     Write-Output "push rejeitado, sincronizando (tentativa $i/$maxTentativas)..."
-    Write-Output $saida
-    $saida = & $GitExe pull --rebase --autostash 2>&1
-    Write-Output $saida
+    Invoke-Git pull --rebase --autostash | Out-Null
     if ($i -eq $maxTentativas) { throw "git push falhou apos $maxTentativas tentativas" }
     Start-Sleep -Seconds ([math]::Min(2*$i, 10))
 }

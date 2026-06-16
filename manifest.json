@@ -8,6 +8,14 @@
         "atualizado":  "2026-06-15 22:00:45"
     },
     {
+        "slug":  "NOME_DO_CLIENTE-EC2AMAZ-3G47FMP-MSSQLSERVER",
+        "cliente":  "NOME_DO_CLIENTE",
+        "servidor":  "EC2AMAZ-3G47FMP",
+        "instancia":  "MSSQLSERVER",
+        "file":  "data-NOME_DO_CLIENTE-EC2AMAZ-3G47FMP-MSSQLSERVER.json",
+        "atualizado":  "2026-06-16 09:23:10"
+    },
+    {
         "slug":  "NOME_DO_CLIENTE-SQL-DASH-MSSQLSERVER",
         "cliente":  "NOME_DO_CLIENTE",
         "servidor":  "SQL-DASH",

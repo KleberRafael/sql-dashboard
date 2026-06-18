@@ -930,16 +930,32 @@ function renderResumo(){
   const ptTotal=[...D.prot_cfg,...D.prot_tbl,...D.prot_del,...D.prot_heap,...D.prot_sts,...D.prot_midx,...D.prot_rec].filter(r=>r.sts!=='OK').length;
   const ptEl=document.getElementById('nb-pt');if(ptEl){ptEl.textContent=ptTotal||'—';ptEl.className=ptTotal>0?'nb c':'nb';}
 
-  const items=[
-    {i:'📊',bg:'rgba(45,217,143,.1)',t:'Buffer Hit Ratio',r:g('buffer cache hit ratio'),pg:'memoria'},
-    {i:'🧠',bg:'rgba(56,189,248,.1)',t:'Page Life Expectancy',r:g('page life expectancy'),pg:'memoria'},
-    {i:'🔒',bg:'rgba(255,77,109,.1)',t:'Sessões Bloqueadas',r:g('sessoes bloqueadas agora'),pg:'locks'},
-    {i:'💀',bg:'rgba(255,77,109,.1)',t:'Deadlocks/sec',r:g('deadlocks/sec'),pg:'locks'},
-    {i:'🔍',bg:'rgba(245,166,35,.1)',t:'Missing Indexes',r:g('missing indexes'),pg:'midx'},
-    {i:'💾',bg:'rgba(255,77,109,.1)',t:'Backups Atrasados',r:g('databases sem backup recente'),pg:'backups'},
-    {i:'⚙️',bg:'rgba(232,97,58,.1)',t:'Jobs com Falha',r:g('jobs com falha'),pg:'jobs'},
-    {i:'🧩',bg:'rgba(124,92,252,.1)',t:'Índices Frag >30%',r:g('indices fragmentados >30%'),pg:'frag'},
-  ];
+  let items;
+  if (ACTIVE_TIPO === 'postgresql') {
+    // Resumo executivo do PostgreSQL — metricas do [22] RESUMO do script PG
+    const conx = (D.conexoes||[]).find(r=>/total_sessoes|total/i.test(r.met));
+    items = [
+      {i:'📊',bg:'rgba(45,217,143,.1)',t:'Cache Hit Ratio',r:g('cache hit ratio'),pg:'memoria'},
+      {i:'🧹',bg:'rgba(245,166,35,.1)',t:'Tabelas p/ Vacuum',r:g('tabelas com dead_tup > 10%'),pg:'frag'},
+      {i:'🔒',bg:'rgba(255,77,109,.1)',t:'Sessões Bloqueadas',r:g('sessoes bloqueadas agora'),pg:'locks'},
+      {i:'💀',bg:'rgba(255,77,109,.1)',t:'Deadlocks Acumulados',r:g('deadlocks acumulados'),pg:'locks'},
+      {i:'🌐',bg:'rgba(56,189,248,.1)',t:'Conexões Ativas',r:(conx||{val:'—',sts:'OK'}),pg:'conexoes'},
+      {i:'🐢',bg:'rgba(232,97,58,.1)',t:'Slow Queries',r:{val:(D.slow||[]).length||'—',sts:(D.slow||[]).some(x=>x.sts!=='OK')?'ATENCAO':'OK'},pg:'slow'},
+      {i:'🗑',bg:'rgba(124,92,252,.1)',t:'Índices não usados',r:{val:(D.idxinuteis||[]).length||'—',sts:'OK'},pg:'idxinuteis'},
+    ];
+  } else {
+    // Resumo executivo do SQL Server (original)
+    items = [
+      {i:'📊',bg:'rgba(45,217,143,.1)',t:'Buffer Hit Ratio',r:g('buffer cache hit ratio'),pg:'memoria'},
+      {i:'🧠',bg:'rgba(56,189,248,.1)',t:'Page Life Expectancy',r:g('page life expectancy'),pg:'memoria'},
+      {i:'🔒',bg:'rgba(255,77,109,.1)',t:'Sessões Bloqueadas',r:g('sessoes bloqueadas agora'),pg:'locks'},
+      {i:'💀',bg:'rgba(255,77,109,.1)',t:'Deadlocks/sec',r:g('deadlocks/sec'),pg:'locks'},
+      {i:'🔍',bg:'rgba(245,166,35,.1)',t:'Missing Indexes',r:g('missing indexes'),pg:'midx'},
+      {i:'💾',bg:'rgba(255,77,109,.1)',t:'Backups Atrasados',r:g('databases sem backup recente'),pg:'backups'},
+      {i:'⚙️',bg:'rgba(232,97,58,.1)',t:'Jobs com Falha',r:g('jobs com falha'),pg:'jobs'},
+      {i:'🧩',bg:'rgba(124,92,252,.1)',t:'Índices Frag >30%',r:g('indices fragmentados >30%'),pg:'frag'},
+    ];
+  }
   document.getElementById('dgrid').innerHTML=items.map(it=>`
     <div class="di" onclick="go('${it.pg}')">
       <div class="dico" style="background:${it.bg}">${it.i}</div>

@@ -64,6 +64,11 @@ body::before{content:'';position:fixed;inset:0;background-image:linear-gradient(
 .inst-sel{background:var(--bg3);border:1px solid var(--border2);border-radius:6px;color:var(--text);font-family:'DM Mono',monospace;font-size:11px;padding:5px 10px;outline:none;cursor:pointer;max-width:280px;}
 .inst-sel:focus{border-color:var(--accent);}
 .inst-sel optgroup{background:var(--bg2);color:var(--accent);font-style:normal;}
+.sgbd-chip{display:inline-block;padding:4px 10px;border-radius:12px;font-family:'DM Mono',monospace;font-size:10px;font-weight:600;letter-spacing:.5px;color:#fff;margin-left:2px;}
+.sgbd-sqlserver{background:#C8443B;}
+.sgbd-postgresql{background:#336791;}
+.sgbd-mysql{background:#E48E00;}
+.sgbd-oracle{background:#C74634;}
 .inst-sel option{background:var(--bg2);color:var(--text);}
 
 /* PAGES */
@@ -228,6 +233,7 @@ textarea:focus{border-color:var(--accent);}
   <div class="topbar">
     <div class="tb-left"><div id="ptitle">Dashboard</div><span id="psub">Visão geral</span></div>
     <select class="inst-sel" id="inst-sel" onchange="onInstanceChange(this.value)" title="Instancia monitorada"></select>
+    <span class="sgbd-chip sgbd-sqlserver" id="sgbd-chip">SQL Server</span>
     <div class="tb-chip" id="tb-chip">demo-server | SQL Server —</div>
     <div class="tb-actions">
       <input class="sbox" type="text" placeholder="Buscar..." id="gs" oninput="doSearch(this.value)">
@@ -511,6 +517,61 @@ const D={server:[],databases:[],discos:[],arquivos:[],dbsize:[],tabelas:[],frag:
 // store acumulativo de instancias importadas manualmente: slug -> {meta, rawTsv}
 const INSTANCES = {};
 let ACTIVE_SLUG = null;
+let ACTIVE_TIPO = 'sqlserver';   // tipo de SGBD da instancia ativa
+
+// Mapa: quais secoes do menu cada SGBD exibe.
+// As nao listadas ficam escondidas para aquele tipo.
+const SECOES_POR_SGBD = {
+  sqlserver: ['overview','server','databases','discos','arquivos','dbsize','memoria','cpu','io',
+              'waits','slow','locks','conexoes','tabelas','midx','frag','idxinuteis',
+              'backups','jobs','config','tf','counters','protheus','import'],
+  postgresql: ['overview','server','databases','arquivos','dbsize','memoria','cpu','io',
+               'waits','slow','locks','conexoes','tabelas','idxinuteis','frag',
+               'config','counters','import'],
+  mysql: ['overview','server','databases','dbsize','memoria','cpu','io',
+          'waits','slow','locks','conexoes','tabelas','idxinuteis','config','counters','import'],
+  oracle: ['overview','server','databases','dbsize','memoria','cpu','io',
+           'waits','slow','locks','conexoes','tabelas','idxinuteis','config','counters','import']
+};
+
+// Rotulos que mudam conforme o SGBD (quando o conceito tem outro nome)
+const ROTULOS_POR_SGBD = {
+  postgresql: { frag:'Bloat / Vacuum', io:'I/O Stats', counters:'Estatísticas', midx:'Índices' },
+  mysql:      { frag:'Fragmentação', counters:'Status Global' },
+  oracle:     { frag:'Fragmentação', counters:'Estatísticas' }
+};
+
+// Aplica a "roupagem" do SGBD: mostra/esconde itens do menu e ajusta rotulos
+function aplicarRoupagemSGBD(tipo){
+  ACTIVE_TIPO = (tipo || 'sqlserver').toLowerCase();
+  const visiveis = SECOES_POR_SGBD[ACTIVE_TIPO] || SECOES_POR_SGBD.sqlserver;
+  // mostra/esconde cada item de menu
+  document.querySelectorAll('.ni[id^="nav-"]').forEach(el => {
+    const sec = el.id.replace('nav-','');
+    el.style.display = visiveis.includes(sec) ? '' : 'none';
+  });
+  // ajusta rotulos especificos do tipo
+  const rot = ROTULOS_POR_SGBD[ACTIVE_TIPO] || {};
+  Object.keys(rot).forEach(sec => {
+    const el = document.getElementById('nav-'+sec);
+    if (el) {
+      // troca apenas o texto, preservando o icone (primeiro span) e o badge (ultimo span)
+      const badge = el.querySelector('.nb');
+      const icone = el.querySelector('span');
+      const txt = ' ' + rot[sec] + ' ';
+      // reconstroi: icone + texto + badge
+      el.childNodes.forEach(n => { if(n.nodeType===3) n.textContent=''; });
+      if (icone) icone.insertAdjacentText('afterend', txt);
+    }
+  });
+  // badge do tipo no topo
+  const chip = document.getElementById('sgbd-chip');
+  if (chip) {
+    const nomes = {sqlserver:'SQL Server', postgresql:'PostgreSQL', mysql:'MySQL', oracle:'Oracle'};
+    chip.textContent = nomes[ACTIVE_TIPO] || ACTIVE_TIPO;
+    chip.className = 'sgbd-chip sgbd-' + ACTIVE_TIPO;
+  }
+}
 
 const PM={overview:{t:'Dashboard',s:'Visão geral'},server:{t:'Server Properties',s:'Versão, patch e SO'},
   databases:{t:'Databases',s:'Status e propriedades'},discos:{t:'Discos',s:'Espaço livre por volume'},
@@ -1525,6 +1586,15 @@ function loadInstance(file){
   fetch(file + '?_=' + Date.now())
     .then(r => { if(!r.ok) throw new Error('sem '+file); return r.json(); })
     .then(rows => {
+      // detecta o tipo de SGBD a partir dos proprios dados carregados
+      let tipo = 'sqlserver';
+      const tRow = rows.find(r => r.metrica === 'sgbd_tipo');
+      if (tRow && tRow.valor) tipo = String(tRow.valor).toLowerCase();
+      else if (rows.find(r => r.metrica === 'versao_postgresql')) tipo = 'postgresql';
+      else if (rows.find(r => r.metrica === 'versao_mysql'))       tipo = 'mysql';
+      else if (rows.find(r => r.metrica === 'versao_oracle'))      tipo = 'oracle';
+      aplicarRoupagemSGBD(tipo);
+
       const tsv = rows.map(r =>
         [0, _san(r.secao), _san(r.metrica), _san(r.valor), _san(r.status), _san(r.detalhe)].join('\t')
       ).join('\n');

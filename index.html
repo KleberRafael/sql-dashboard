@@ -1634,6 +1634,9 @@ function loadInstance(file){
   fetch(file + '?_=' + Date.now())
     .then(r => { if(!r.ok) throw new Error('sem '+file); return r.json(); })
     .then(rows => {
+      // tolera dados embrulhados pelo PowerShell: {"value":[...]} ou [{"value":[...]}]
+      if (rows && !Array.isArray(rows) && Array.isArray(rows.value)) rows = rows.value;
+      if (Array.isArray(rows) && rows.length===1 && rows[0] && Array.isArray(rows[0].value)) rows = rows[0].value;
       // detecta o tipo de SGBD a partir dos proprios dados carregados
       let tipo = 'sqlserver';
       const tRow = rows.find(r => r.metrica === 'sgbd_tipo');
@@ -1663,6 +1666,9 @@ function bootDashboard(){
   fetch('manifest.json?_=' + Date.now())
     .then(r => { if(!r.ok) throw new Error('sem manifest ('+r.status+')'); return r.json(); })
     .then(list => {
+      // tolera manifest embrulhado pelo PowerShell: [{"value":[...]}] ou {"value":[...]}
+      if (list && !Array.isArray(list) && Array.isArray(list.value)) list = list.value;
+      if (Array.isArray(list) && list.length===1 && list[0] && Array.isArray(list[0].value)) list = list[0].value;
       if(!Array.isArray(list)) list = [list];           // tolera objeto unico
       if(!list.length) throw new Error('manifest vazio');
       list.sort((a,b)=>(a.cliente+a.instancia).localeCompare(b.cliente+b.instancia));

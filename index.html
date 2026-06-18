@@ -246,13 +246,13 @@ textarea:focus{border-color:var(--accent);}
   <!-- OVERVIEW -->
   <div class="page active" id="page-overview">
     <div class="kgrid">
-      <div class="kc" style="--kc:var(--ok)"    onclick="go('memoria')"><div class="kc-label">Buffer Hit</div><div class="kc-val" id="k-hit">—</div><div class="kc-sub">Ideal &gt;99%</div><div class="kc-arr">→</div></div>
-      <div class="kc" style="--kc:var(--info)"  onclick="go('memoria')"><div class="kc-label">PLE (s)</div><div class="kc-val" id="k-ple">—</div><div class="kc-sub">Ideal &gt;300s</div><div class="kc-arr">→</div></div>
-      <div class="kc" style="--kc:var(--crit)"  onclick="go('locks')"  ><div class="kc-label">Bloqueados</div><div class="kc-val" id="k-blk">—</div><div class="kc-sub">deve ser 0</div><div class="kc-arr">→</div></div>
-      <div class="kc" style="--kc:var(--crit)"  onclick="go('locks')"  ><div class="kc-label">Deadlocks/s</div><div class="kc-val" id="k-ddl">—</div><div class="kc-sub">deve ser 0</div><div class="kc-arr">→</div></div>
-      <div class="kc" style="--kc:var(--warn)"  onclick="go('midx')"   ><div class="kc-label">Missing Idx</div><div class="kc-val" id="k-midx">—</div><div class="kc-sub">detectados</div><div class="kc-arr">→</div></div>
-      <div class="kc" style="--kc:var(--crit)"  onclick="go('backups')" ><div class="kc-label">Bkp Atrasados</div><div class="kc-val" id="k-bkp">—</div><div class="kc-sub">databases</div><div class="kc-arr">→</div></div>
-      <div class="kc" style="--kc:var(--crit)"  onclick="go('jobs')"    ><div class="kc-label">Jobs Falhou</div><div class="kc-val" id="k-jobs">—</div><div class="kc-sub">última exec.</div><div class="kc-arr">→</div></div>
+      <div class="kc" style="--kc:var(--ok)"    onclick="go('memoria')"><div class="kc-label" id="kl-hit">Buffer Hit</div><div class="kc-val" id="k-hit">—</div><div class="kc-sub" id="ks-hit">Ideal &gt;99%</div><div class="kc-arr">→</div></div>
+      <div class="kc" style="--kc:var(--info)"  onclick="go('memoria')" id="kc-ple"><div class="kc-label" id="kl-ple">PLE (s)</div><div class="kc-val" id="k-ple">—</div><div class="kc-sub" id="ks-ple">Ideal &gt;300s</div><div class="kc-arr">→</div></div>
+      <div class="kc" style="--kc:var(--crit)"  onclick="go('locks')"  ><div class="kc-label" id="kl-blk">Bloqueados</div><div class="kc-val" id="k-blk">—</div><div class="kc-sub" id="ks-blk">deve ser 0</div><div class="kc-arr">→</div></div>
+      <div class="kc" style="--kc:var(--crit)"  onclick="go('locks')"  ><div class="kc-label" id="kl-ddl">Deadlocks/s</div><div class="kc-val" id="k-ddl">—</div><div class="kc-sub" id="ks-ddl">deve ser 0</div><div class="kc-arr">→</div></div>
+      <div class="kc" style="--kc:var(--warn)"  onclick="go('midx')" id="kc-midx"  ><div class="kc-label" id="kl-midx">Missing Idx</div><div class="kc-val" id="k-midx">—</div><div class="kc-sub" id="ks-midx">detectados</div><div class="kc-arr">→</div></div>
+      <div class="kc" style="--kc:var(--crit)"  onclick="go('backups')" id="kc-bkp" ><div class="kc-label" id="kl-bkp">Bkp Atrasados</div><div class="kc-val" id="k-bkp">—</div><div class="kc-sub" id="ks-bkp">databases</div><div class="kc-arr">→</div></div>
+      <div class="kc" style="--kc:var(--crit)"  onclick="go('jobs')" id="kc-jobs"   ><div class="kc-label" id="kl-jobs">Jobs Falhou</div><div class="kc-val" id="k-jobs">—</div><div class="kc-sub" id="ks-jobs">última exec.</div><div class="kc-arr">→</div></div>
       <div class="kc" style="--kc:var(--accent2)" onclick="go('waits')"><div class="kc-label">Top Wait</div><div class="kc-val" id="k-wt" style="font-size:13px;margin-top:2px">—</div><div class="kc-sub" id="k-wt-ms">—</div><div class="kc-arr">→</div></div>
     </div>
     <div class="sh"><div class="st"><span class="sn">[22]</span><span class="sh2">Resumo Executivo</span></div></div>
@@ -571,6 +571,42 @@ function aplicarRoupagemSGBD(tipo){
     chip.textContent = nomes[ACTIVE_TIPO] || ACTIVE_TIPO;
     chip.className = 'sgbd-chip sgbd-' + ACTIVE_TIPO;
   }
+
+  // adapta os cards de KPI do topo conforme o SGBD
+  adaptarCardsKPI(ACTIVE_TIPO);
+}
+
+// Define rotulo/sub de cada card e quais ficam ocultos, por SGBD.
+// Os cards que nao se aplicam a um tipo sao escondidos.
+function adaptarCardsKPI(tipo){
+  // helpers
+  const setLbl = (id,txt)=>{ const e=document.getElementById(id); if(e) e.textContent=txt; };
+  const showCard = (valId,show)=>{ const v=document.getElementById(valId); const kc=v?v.closest('.kc'):null; if(kc) kc.style.display = show?'':'none'; };
+
+  if (tipo === 'postgresql') {
+    // Buffer Hit -> Cache Hit Ratio
+    setLbl('kl-hit','Cache Hit');   setLbl('ks-hit','Ideal ≥99%');
+    // PLE -> Dead Tuples (reaproveita o card, troca rotulo)
+    setLbl('kl-ple','Dead Tuples'); setLbl('ks-ple','tabelas >10%'); showCard('k-ple',true);
+    // Bloqueados (serve) -> Sessoes bloqueadas
+    setLbl('kl-blk','Bloqueados');  setLbl('ks-blk','sessões agora');
+    // Deadlocks (serve)
+    setLbl('kl-ddl','Deadlocks');   setLbl('ks-ddl','acumulados');
+    // Missing Idx -> Conexoes
+    setLbl('kl-midx','Conexões');   setLbl('ks-midx','ativas'); showCard('k-midx',true);
+    // Backups e Jobs: nao se aplicam ao PG -> ocultar
+    showCard('k-bkp',false);
+    showCard('k-jobs',false);
+  } else {
+    // SQL Server (default): restaura rotulos originais e mostra todos
+    setLbl('kl-hit','Buffer Hit');  setLbl('ks-hit','Ideal >99%');
+    setLbl('kl-ple','PLE (s)');     setLbl('ks-ple','Ideal >300s'); showCard('k-ple',true);
+    setLbl('kl-blk','Bloqueados');  setLbl('ks-blk','deve ser 0');
+    setLbl('kl-ddl','Deadlocks/s'); setLbl('ks-ddl','deve ser 0');
+    setLbl('kl-midx','Missing Idx');setLbl('ks-midx','detectados'); showCard('k-midx',true);
+    setLbl('kl-bkp','Bkp Atrasados');setLbl('ks-bkp','databases'); showCard('k-bkp',true);
+    setLbl('kl-jobs','Jobs Falhou');setLbl('ks-jobs','última exec.'); showCard('k-jobs',true);
+  }
 }
 
 const PM={overview:{t:'Dashboard',s:'Visão geral'},server:{t:'Server Properties',s:'Versão, patch e SO'},
@@ -864,10 +900,22 @@ function renderResumo(){
     const c=sc(r.sts);
     el.closest('.kc')?.style.setProperty('--kc',c==='bcrit'?'var(--crit)':c==='bwarn'?'var(--warn)':'var(--ok)');
   }
-  setK('k-hit',g('buffer cache hit ratio'));setK('k-ple',g('page life expectancy'));
-  setK('k-blk',g('sessoes bloqueadas agora'));setK('k-ddl',g('deadlocks/sec'));
-  setK('k-midx',g('missing indexes'));setK('k-bkp',g('databases sem backup recente'));
-  setK('k-jobs',g('jobs com falha'));
+  if (ACTIVE_TIPO === 'postgresql') {
+    // KPIs do PostgreSQL
+    setK('k-hit',g('cache hit ratio'));
+    setK('k-ple',g('tabelas com dead_tup > 10%'));     // card "Dead Tuples"
+    setK('k-blk',g('sessoes bloqueadas agora'));
+    setK('k-ddl',g('deadlocks acumulados'));
+    // Conexoes ativas: vem de [14] CONEXOES total_sessoes
+    const conx = (D.conexoes||[]).find(r=>/total_sessoes|total/i.test(r.met)) || {val:(D.conexoes||[]).length||'—',sts:'OK'};
+    setK('k-midx',{val:conx.val,sts:conx.sts||'OK'});
+  } else {
+    // KPIs do SQL Server (comportamento original)
+    setK('k-hit',g('buffer cache hit ratio'));setK('k-ple',g('page life expectancy'));
+    setK('k-blk',g('sessoes bloqueadas agora'));setK('k-ddl',g('deadlocks/sec'));
+    setK('k-midx',g('missing indexes'));setK('k-bkp',g('databases sem backup recente'));
+    setK('k-jobs',g('jobs com falha'));
+  }
   const tw=g('top wait event');
   document.getElementById('k-wt').textContent=(tw.val||'—').split('_').slice(0,3).join('_');
   document.getElementById('k-wt-ms').textContent=tw.det||'';

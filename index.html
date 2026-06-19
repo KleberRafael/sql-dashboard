@@ -238,8 +238,8 @@ textarea:focus{border-color:var(--accent);}
     <div class="tb-chip" id="tb-chip">demo-server | SQL Server —</div>
     <div class="tb-actions">
       <input class="sbox" type="text" placeholder="Buscar..." id="gs" oninput="doSearch(this.value)">
-      <button class="btn btn-ia" onclick="analisarComIA()" title="Gera um prompt de análise e copia para você colar no Claude.ai">🤖 Analisar com IA</button>
-      <button class="btn btn-g" onclick="window.print()">PDF</button>
+      <button class="btn btn-ia" onclick="analisarComIA()" title="Copia o prompt de análise e abre o Claude num pop-up para você colar e enviar">🤖 Analisar com IA</button>
+      <button class="btn btn-g" onclick="gerarPDF()" title="Gera um relatório PDF profissional da instância ativa">PDF</button>
       <button class="btn btn-p" onclick="go('import')">+ Importar</button>
     </div>
   </div>
@@ -1664,14 +1664,152 @@ function loadDemo(){
 // ── ANALISAR COM IA (Camada 2 - sob demanda, custo zero) ──
 // Monta um prompt de analise de DBA com os dados da instancia ativa e copia
 // para a area de transferencia, pronto para colar no Claude.ai.
+function gerarPDF(){
+  const nomesSGBD = {sqlserver:'SQL Server', postgresql:'PostgreSQL', mysql:'MySQL', oracle:'Oracle'};
+  const nome = nomesSGBD[ACTIVE_TIPO] || 'Database';
+  const cor  = {sqlserver:'#C8443B',postgresql:'#336791',mysql:'#E48E00',oracle:'#C74634'}[ACTIVE_TIPO] || '#C8443B';
+
+  // identidade da instancia (reaproveita a deteccao por SGBD)
+  const get = (m)=> (D.server.find(r=>r.met===m)||{}).val;
+  let servidor, versao, instancia, cliente;
+  if (ACTIVE_TIPO==='oracle'){ servidor=get('instance_name')||'-'; versao=get('versao_oracle')||'-'; instancia=get('instance_name')||'-'; }
+  else if (ACTIVE_TIPO==='postgresql'){ servidor=get('hostname_ip')||'-'; versao=get('server_version')||get('versao_postgresql')||'-'; instancia=get('instancia')||'postgres'; }
+  else if (ACTIVE_TIPO==='mysql'){ servidor=get('hostname')||'-'; versao=get('versao_mysql')||get('version')||'-'; instancia=get('instancia')||'mysql'; }
+  else { servidor=get('hostname')||'-'; versao=get('versao_sql_server')||'-'; instancia=get('instancia')||'MSSQLSERVER'; }
+  cliente = (window.ACTIVE_META && window.ACTIVE_META.cliente) || '';
+
+  // coleta itens por severidade
+  const labels = {
+    server:'Server', databases:'Databases', discos:'Discos/Tablespaces', arquivos:'Arquivos',
+    dbsize:'DB Size', tabelas:'Top Tabelas/Segments', frag:'Bloat/Fragmentação', memoria:'Memória',
+    io:'I/O', waits:'Waits', slow:'Slow Queries', midx:'Missing Indexes', locks:'Locks',
+    conexoes:'Conexões/Sessões', backups:'Backups', jobs:'Jobs', tf:'Trace Flags',
+    config:'Parâmetros', cfgcrit:'Config Críticas', counters:'Contadores',
+    idxinuteis:'Índices não usados', resumo:'Resumo'
+  };
+  const criticos=[], atencao=[];
+  Object.keys(labels).forEach(k=>{
+    (D[k]||[]).forEach(r=>{
+      const st=(r.sts||'').toUpperCase();
+      const item={sec:labels[k], met:r.met, val:r.val, det:r.det||''};
+      if(st==='CRITICO'||st==='CRÍTICO') criticos.push(item);
+      else if(st==='ATENCAO'||st==='ATENÇÃO'||st==='WARNING'||st==='ALERT') atencao.push(item);
+    });
+  });
+
+  const resumo = (D.resumo||[]).map(r=>({met:r.met,val:r.val,sts:(r.sts||'OK').toUpperCase()}));
+  const hoje = new Date().toLocaleString('pt-BR');
+  const linhasTab = (arr)=> arr.map(i=>
+    `<tr><td class="sec">${esc(i.sec)}</td><td>${esc(i.met)}</td><td class="val">${esc(i.val)}</td><td class="det">${esc(i.det)}</td></tr>`
+  ).join('') || `<tr><td colspan="4" class="vazio">Nenhum item nesta categoria.</td></tr>`;
+  const resumoCards = resumo.map(r=>{
+    const c = (r.sts==='CRITICO'||r.sts==='CRÍTICO') ? '#c0392b' : (r.sts.includes('ATEN')?'#d68910':'#1e8449');
+    return `<div class="rc"><div class="rc-met">${esc(r.met)}</div><div class="rc-val" style="color:${c}">${esc(r.val)}</div></div>`;
+  }).join('') || '<div class="vazio">Sem resumo disponível.</div>';
+
+  const html = `<!DOCTYPE html><html lang="pt-BR"><head><meta charset="utf-8">
+<title>Relatorio ${nome} - ${esc(servidor)}</title>
+<style>
+  @page { size: A4; margin: 18mm 16mm; }
+  * { box-sizing: border-box; }
+  body { font-family: 'Segoe UI', Arial, sans-serif; color:#23303a; margin:0; font-size:12px; }
+  .capa { height: 247mm; display:flex; flex-direction:column; justify-content:center; page-break-after:always; }
+  .capa .barra { height:8px; background:${cor}; width:100%; margin-bottom:40px; }
+  .capa h1 { font-size:34px; color:${cor}; margin:0 0 6px; }
+  .capa h2 { font-size:20px; color:#5a6a76; font-weight:400; margin:0 0 50px; }
+  .capa .box { border:1px solid #dde4ea; border-left:5px solid ${cor}; padding:22px 26px; border-radius:6px; background:#f8fafb; max-width:480px; }
+  .capa .box .row { display:flex; justify-content:space-between; padding:7px 0; border-bottom:1px dashed #e2e8ed; }
+  .capa .box .row:last-child { border-bottom:none; }
+  .capa .box .lbl { color:#7a8893; }
+  .capa .box .v { font-weight:600; font-family:'Consolas',monospace; }
+  .capa .data { margin-top:40px; color:#9aa6b0; font-size:12px; }
+  h3.sh { font-size:17px; color:${cor}; border-bottom:2px solid ${cor}; padding-bottom:5px; margin:26px 0 14px; page-break-after:avoid; }
+  .resumo-grid { display:grid; grid-template-columns:repeat(3,1fr); gap:10px; margin-bottom:10px; }
+  .rc { border:1px solid #e2e8ed; border-radius:6px; padding:10px 12px; background:#fbfcfd; }
+  .rc-met { font-size:10px; color:#7a8893; text-transform:uppercase; letter-spacing:.3px; margin-bottom:4px; }
+  .rc-val { font-size:18px; font-weight:700; }
+  table { width:100%; border-collapse:collapse; margin-bottom:8px; }
+  th { background:${cor}; color:#fff; text-align:left; padding:7px 9px; font-size:11px; }
+  td { padding:6px 9px; border-bottom:1px solid #eef2f5; vertical-align:top; }
+  td.sec { color:#7a8893; white-space:nowrap; font-size:11px; }
+  td.val { font-family:'Consolas',monospace; font-weight:600; }
+  td.det { color:#6b7a85; font-size:11px; }
+  .vazio,.vazio td { color:#9aa6b0; font-style:italic; }
+  .badge { display:inline-block; padding:2px 8px; border-radius:10px; font-size:10px; font-weight:700; color:#fff; }
+  .b-crit { background:#c0392b; } .b-aten { background:#d68910; }
+  .cnt { font-weight:400; opacity:.9; }
+  .rodape { margin-top:30px; padding-top:10px; border-top:1px solid #e2e8ed; color:#9aa6b0; font-size:10px; text-align:center; }
+  tr { page-break-inside: avoid; }
+</style></head><body>
+  <section class="capa">
+    <div class="barra"></div>
+    <h1>${nome} Health Report</h1>
+    <h2>Relatorio de Assessment de Banco de Dados</h2>
+    <div class="box">
+      ${cliente?`<div class="row"><span class="lbl">Cliente</span><span class="v">${esc(cliente)}</span></div>`:''}
+      <div class="row"><span class="lbl">Servidor</span><span class="v">${esc(servidor)}</span></div>
+      <div class="row"><span class="lbl">Instancia</span><span class="v">${esc(instancia)}</span></div>
+      <div class="row"><span class="lbl">SGBD</span><span class="v">${nome}</span></div>
+      <div class="row"><span class="lbl">Versao</span><span class="v">${esc(versao)}</span></div>
+      <div class="row"><span class="lbl">Itens criticos</span><span class="v" style="color:#c0392b">${criticos.length}</span></div>
+      <div class="row"><span class="lbl">Itens em atencao</span><span class="v" style="color:#d68910">${atencao.length}</span></div>
+    </div>
+    <div class="data">Gerado em ${hoje}</div>
+  </section>
+
+  <h3 class="sh">Resumo Executivo</h3>
+  <div class="resumo-grid">${resumoCards}</div>
+
+  <h3 class="sh">Itens Criticos <span class="badge b-crit cnt">${criticos.length}</span></h3>
+  <table><thead><tr><th>Secao</th><th>Metrica</th><th>Valor</th><th>Detalhe / Recomendacao</th></tr></thead>
+    <tbody>${linhasTab(criticos)}</tbody></table>
+
+  <h3 class="sh">Itens em Atencao <span class="badge b-aten cnt">${atencao.length}</span></h3>
+  <table><thead><tr><th>Secao</th><th>Metrica</th><th>Valor</th><th>Detalhe / Recomendacao</th></tr></thead>
+    <tbody>${linhasTab(atencao)}</tbody></table>
+
+  <div class="rodape">Relatorio gerado pelo Dashboard de Assessment - ${nome} - ${esc(servidor)} - ${hoje}</div>
+</body></html>`;
+
+  const win = window.open('', 'pdf_report', 'width=900,height=700');
+  if(!win){ toast('Permita pop-ups para gerar o PDF.'); return; }
+  win.document.open(); win.document.write(html); win.document.close();
+  win.onload = ()=> setTimeout(()=>{ win.focus(); win.print(); }, 350);
+}
+
+function esc(s){ return String(s==null?'':s).replace(/[&<>"]/g, c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c])); }
+
 function analisarComIA(){
-  // identifica a instancia ativa
-  const srvRow = D.server.find(r=>r.met==='hostname');
-  const verRow = D.server.find(r=>r.met==='versao_sql_server');
-  const instRow= D.server.find(r=>r.met==='instancia');
+  // nome do SGBD para o papel do especialista
+  const nomesSGBD = {sqlserver:'SQL Server', postgresql:'PostgreSQL', mysql:'MySQL', oracle:'Oracle'};
+  const nomeSGBD = nomesSGBD[ACTIVE_TIPO] || 'banco de dados';
+
+  // identifica a instancia ativa conforme o SGBD
+  let srvRow, verRow, instRow, instanciaDefault;
+  if (ACTIVE_TIPO === 'oracle') {
+    srvRow = D.server.find(r=>/host/i.test(r.met)) || D.server.find(r=>r.met==='instance_name');
+    verRow = D.server.find(r=>r.met==='versao_oracle');
+    instRow= D.server.find(r=>r.met==='instance_name');
+    instanciaDefault = 'ORCL';
+  } else if (ACTIVE_TIPO === 'postgresql') {
+    srvRow = D.server.find(r=>r.met==='hostname_ip') || D.server.find(r=>/host/i.test(r.met));
+    verRow = D.server.find(r=>r.met==='server_version') || D.server.find(r=>r.met==='versao_postgresql');
+    instRow= D.server.find(r=>r.met==='instancia');
+    instanciaDefault = 'postgres';
+  } else if (ACTIVE_TIPO === 'mysql') {
+    srvRow = D.server.find(r=>r.met==='hostname') || D.server.find(r=>/host/i.test(r.met));
+    verRow = D.server.find(r=>r.met==='versao_mysql') || D.server.find(r=>r.met==='version');
+    instRow= D.server.find(r=>r.met==='instancia');
+    instanciaDefault = 'mysql';
+  } else {
+    srvRow = D.server.find(r=>r.met==='hostname');
+    verRow = D.server.find(r=>r.met==='versao_sql_server');
+    instRow= D.server.find(r=>r.met==='instancia');
+    instanciaDefault = 'MSSQLSERVER';
+  }
   const servidor = srvRow ? srvRow.val : '(servidor)';
   const versao   = verRow ? verRow.val : '?';
-  const instancia= instRow? instRow.val: 'MSSQLSERVER';
+  const instancia= instRow? instRow.val: instanciaDefault;
 
   // coleta todas as linhas do dataset ativo, marcando severidade
   const labels = {
@@ -1705,12 +1843,12 @@ function analisarComIA(){
 
   // monta o prompt
   const prompt =
-`Você é um DBA sênior especialista em SQL Server. Analise o assessment abaixo e produza um diagnóstico acionável.
+`Você é um DBA sênior especialista em ${nomeSGBD}. Analise o assessment abaixo e produza um diagnóstico acionável.
 
 CONTEXTO DO AMBIENTE
 - Servidor: ${servidor}
 - Instância: ${instancia}
-- Versão SQL Server: ${versao}
+- Versão ${nomeSGBD}: ${versao}
 - Coletado em: ${new Date().toLocaleString('pt-BR')}
 
 ITENS CRÍTICOS (${criticos.length})
@@ -1724,21 +1862,35 @@ ${ok.slice(0,80).join('\n')}${ok.length>80? '\n... ('+(ok.length-80)+' itens omi
 
 O QUE PRECISO
 1. As 5 ações mais urgentes, priorizadas por severidade e impacto, com justificativa técnica curta.
-2. Para cada ação, o comando ou abordagem concreta (T-SQL / configuração) que um DBA executaria no SSMS.
+2. Para cada ação, o comando ou abordagem concreta (${({sqlserver:'T-SQL executado no SSMS',postgresql:'SQL/parâmetros via psql',mysql:'SQL/variáveis via cliente MySQL',oracle:'SQL/PL-SQL via SQL*Plus'})[ACTIVE_TIPO] || 'comando SQL ou configuração'}).
 3. Possíveis causas-raiz que liguem vários sintomas (ex.: um wait alto explicando lentidão + locks).
 4. O que NÃO é urgente mas vale acompanhar.
 5. Riscos de cada recomendação — seja honesto sobre o que exige validação antes de aplicar em produção.
 
 Seja específico e direto. Assuma que quem lê é um DBA experiente que valida tudo antes de aplicar.`;
 
-  // copia para a area de transferencia
+  // copia para a area de transferencia e abre o Claude.ai num pop-up
+  const abrirClaudePopup = () => {
+    const w = 520, h = 720;
+    const left = (screen.width  - w) / 2;
+    const top  = (screen.height - h) / 2;
+    const win = window.open('https://claude.ai/new', 'claude_ia',
+      `popup=yes,width=${w},height=${h},left=${left},top=${top},resizable=yes,scrollbars=yes`);
+    if (!win) {
+      // pop-up bloqueado pelo navegador
+      toast('Prompt copiado! Permita pop-ups para abrir o Claude, ou cole em claude.ai (Ctrl+V).');
+    }
+  };
+
   navigator.clipboard.writeText(prompt).then(()=>{
-    toast('Prompt de análise copiado! Cole no Claude.ai (Ctrl+V / Cmd+V).');
+    toast('Prompt copiado! Abrindo o Claude — é só colar (Ctrl+V) e enviar.');
+    abrirClaudePopup();
   }).catch(()=>{
     // fallback se clipboard bloqueado: mostra numa textarea para copiar manual
     const ta = document.getElementById('idata');
     if(ta){ go('import'); ta.value = prompt; ta.focus(); ta.select();
-      toast('Prompt gerado na aba Importar — copie manualmente (Ctrl+A, Ctrl+C).'); }
+      toast('Prompt gerado na aba Importar — copie (Ctrl+A, Ctrl+C) e cole no Claude.'); }
+    abrirClaudePopup();
   });
 }
 
@@ -1771,6 +1923,7 @@ function loadInstance(file){
       document.getElementById('idata').value = tsv;
       importData();
       const meta = rows[0] || {};
+      window.ACTIVE_META = meta;
       document.getElementById('imp-st').textContent =
         'Instancia: ' + (meta.cliente||'?') + ' / ' + (meta.servidor||'?') + ' — ' +
         new Date().toLocaleString('pt-BR');

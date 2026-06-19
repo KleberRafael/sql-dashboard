@@ -184,8 +184,8 @@ textarea:focus{border-color:var(--accent);}
 <!-- SIDEBAR -->
 <aside class="sb">
   <div class="sb-logo">
-    <div class="eye">SQL Server Assessment</div>
-    <h2><em>SQL Server</em><br>Health Report</h2>
+    <div class="eye" id="sb-eye">SQL Server Assessment</div>
+    <h2 id="sb-title"><em>SQL Server</em><br>Health Report</h2>
     <div class="srv-chip">
       <div class="sh" id="s-host">demo-server</div>
       <div class="sv" id="s-ver">SQL Server —</div>
@@ -536,15 +536,15 @@ const SECOES_POR_SGBD = {
                'config','cfgcrit','counters','import'],
   mysql: ['overview','server','databases','dbsize','memoria','cpu','io',
           'waits','slow','locks','conexoes','tabelas','idxinuteis','config','counters','import'],
-  oracle: ['overview','server','databases','dbsize','memoria','cpu','io',
-           'waits','slow','locks','conexoes','tabelas','idxinuteis','config','counters','import']
+  oracle: ['overview','server','databases','discos','dbsize','tabelas','memoria',
+           'waits','slow','locks','conexoes','config','cfgcrit','import']
 };
 
 // Rotulos que mudam conforme o SGBD (quando o conceito tem outro nome)
 const ROTULOS_POR_SGBD = {
   postgresql: { frag:'Bloat / Vacuum', io:'I/O Stats', counters:'Estatísticas', midx:'Índices', config:'Parâmetros' },
   mysql:      { frag:'Fragmentação', counters:'Status Global' },
-  oracle:     { frag:'Fragmentação', counters:'Estatísticas' }
+  oracle:     { discos:'Tablespaces', config:'Parâmetros', cfgcrit:'Config Críticas', tabelas:'Top Segments', conexoes:'Sessões' }
 };
 
 // Aplica a "roupagem" do SGBD: mostra/esconde itens do menu e ajusta rotulos
@@ -580,6 +580,20 @@ function aplicarRoupagemSGBD(tipo){
 
   // adapta os cards de KPI do topo conforme o SGBD
   adaptarCardsKPI(ACTIVE_TIPO);
+
+  // identidade visual por SGBD: titulo, subtitulo e cor de acento
+  const ident = {
+    sqlserver:  {nome:'SQL Server',  eye:'SQL Server Assessment',  cor:'#e8613a'},
+    postgresql: {nome:'PostgreSQL',  eye:'PostgreSQL Assessment',  cor:'#336791'},
+    mysql:      {nome:'MySQL',       eye:'MySQL Assessment',       cor:'#E48E00'},
+    oracle:     {nome:'Oracle',      eye:'Oracle Assessment',      cor:'#C74634'}
+  }[ACTIVE_TIPO] || {nome:'Database', eye:'Database Assessment', cor:'#C8443B'};
+  const elTitle = document.getElementById('sb-title');
+  const elEye   = document.getElementById('sb-eye');
+  if (elTitle) elTitle.innerHTML = '<em>'+ident.nome+'</em><br>Health Report';
+  if (elEye)   elEye.textContent = ident.eye;
+  // cor de acento via CSS variable (afeta destaques que usam --accent)
+  document.documentElement.style.setProperty('--accent', ident.cor);
 }
 
 // Define rotulo/sub de cada card e quais ficam ocultos, por SGBD.
@@ -601,6 +615,20 @@ function adaptarCardsKPI(tipo){
     // Missing Idx -> Conexoes
     setLbl('kl-midx','Conexões');   setLbl('ks-midx','ativas'); showCard('k-midx',true);
     // Backups e Jobs: nao se aplicam ao PG -> ocultar
+    showCard('k-bkp',false);
+    showCard('k-jobs',false);
+  } else if (tipo === 'oracle') {
+    // Cache Hit (buffer cache hit ratio)
+    setLbl('kl-hit','Cache Hit');   setLbl('ks-hit','Ideal ≥95%');
+    // PLE -> Sessoes Ativas
+    setLbl('kl-ple','Sessões Ativas'); setLbl('ks-ple','agora'); showCard('k-ple',true);
+    // Bloqueados
+    setLbl('kl-blk','Bloqueados');  setLbl('ks-blk','sessões agora');
+    // Deadlocks -> Tablespaces Criticas
+    setLbl('kl-ddl','TS Críticas'); setLbl('ks-ddl','≥90% uso'); showCard('k-ddl',true);
+    // Missing Idx -> Objetos Invalidos
+    setLbl('kl-midx','Obj Inválidos'); setLbl('ks-midx','recompilar'); showCard('k-midx',true);
+    // Backups e Jobs: ocultar (Oracle nao tem o conceito do mesmo jeito)
     showCard('k-bkp',false);
     showCard('k-jobs',false);
   } else {
@@ -705,11 +733,20 @@ function doSearch(v){if(v.length<3)return;go('slow');setTimeout(()=>fsearch('tb-
 
 // ── SERVER UI ──
 function updateSrvUI(host,ver,win){
+  const nomes = {sqlserver:'SQL Server', postgresql:'PostgreSQL', mysql:'MySQL', oracle:'Oracle'};
+  const nome = nomes[ACTIVE_TIPO] || 'Database';
   document.getElementById('s-host').textContent=host||'—';
-  document.getElementById('s-ver').textContent='SQL Server '+(ver||'—');
-  document.getElementById('s-win').textContent=win||'';
-  document.getElementById('tb-chip').textContent=`${host||'—'} | SQL Server ${ver||'—'}`;
-  document.title='SQL Assessment — '+(host||'Report');
+  // evita duplicar o nome do SGBD se a versao ja o contiver (ex: banner Oracle/PostgreSQL)
+  const verTxt = ver||'—';
+  const verLabel = (verTxt!=='—' && verTxt.toLowerCase().includes(nome.toLowerCase().split(' ')[0]))
+                   ? verTxt : (nome+' '+verTxt);
+  document.getElementById('s-ver').textContent=verLabel;
+  // a terceira linha: SO para SQL Server; para os outros, plataforma/info ou esconde
+  const elWin = document.getElementById('s-win');
+  elWin.textContent = win || '';
+  elWin.style.display = win ? '' : 'none';
+  document.getElementById('tb-chip').textContent=`${host||'—'} | ${nome} ${ver||'—'}`;
+  document.title=nome+' Assessment — '+(host||'Report');
 }
 
 // ── PARSE ──
@@ -795,6 +832,20 @@ function importData(){
     if(sec==='[20] INDICES INUTEIS') D.idxinuteis.push(obj);
     if(sec==='[22] RESUMO') D.resumo.push(obj);
 
+    // --- Aliases por SGBD (mesma "gaveta" visual, secao com nome diferente) ---
+    // Oracle
+    if(sec==='[01] PATCHES') D.server.push(obj);              // patches no painel server
+    if(sec==='[02] PDBS') D.databases.push(obj);             // PDBs como databases
+    if(sec==='[03] TABLESPACES') D.discos.push(obj);         // tablespaces como "discos"
+    if(sec==='[05] TOP SEGMENTS') D.tabelas.push(obj);       // segments como top tabelas
+    if(sec==='[20] INVALID OBJECTS') D.config.push(obj);     // objetos invalidos junto de config
+    // PostgreSQL
+    if(sec==='[01] DATABASES'){} // ja tratado acima
+    if(sec==='[06] BLOAT APROX'||sec==='[06] BLOAT PRECISO') D.frag.push(obj);
+    if(sec==='[09] IO STATS') D.io.push(obj);
+    if(sec==='[19] COUNTERS') {} // ja tratado
+    if(sec==='[20] INDICES NAO USADOS') D.idxinuteis.push(obj);
+
     // Protheus
     if(sec==='[21] PROTHEUS'){
       if(met.startsWith('banco_')||met.includes('read_committed')||met.includes('snapshot')||
@@ -811,9 +862,25 @@ function importData(){
     }
   });
 
-  const host=D.server.find(r=>r.met==='hostname');
-  const ver= D.server.find(r=>r.met==='versao_sql_server');
-  const win= D.server.find(r=>r.met==='windows_version');
+  // host e versao conforme o SGBD ativo
+  let host, ver, win;
+  if (ACTIVE_TIPO === 'oracle') {
+    host = D.server.find(r=>r.met==='instance_name') || D.server.find(r=>/host/i.test(r.met));
+    ver  = D.server.find(r=>r.met==='versao_oracle');
+    win  = D.server.find(r=>r.met==='platform');
+  } else if (ACTIVE_TIPO === 'postgresql') {
+    host = D.server.find(r=>r.met==='hostname_ip') || D.server.find(r=>/host/i.test(r.met));
+    ver  = D.server.find(r=>r.met==='server_version') || D.server.find(r=>r.met==='versao_postgresql');
+    win  = null;
+  } else if (ACTIVE_TIPO === 'mysql') {
+    host = D.server.find(r=>r.met==='hostname') || D.server.find(r=>/host/i.test(r.met));
+    ver  = D.server.find(r=>r.met==='versao_mysql') || D.server.find(r=>r.met==='version');
+    win  = null;
+  } else {
+    host = D.server.find(r=>r.met==='hostname');
+    ver  = D.server.find(r=>r.met==='versao_sql_server');
+    win  = D.server.find(r=>r.met==='windows_version');
+  }
   if(host||ver) updateSrvUI(host?.val,ver?.val,win?.val);
 
   renderAll();
@@ -917,6 +984,13 @@ function renderResumo(){
     // Conexoes ativas: vem de [14] CONEXOES total_sessoes
     const conx = (D.conexoes||[]).find(r=>/total_sessoes|total/i.test(r.met)) || {val:(D.conexoes||[]).length||'—',sts:'OK'};
     setK('k-midx',{val:conx.val,sts:conx.sts||'OK'});
+  } else if (ACTIVE_TIPO === 'oracle') {
+    // KPIs do Oracle
+    setK('k-hit',g('cache hit ratio'));
+    setK('k-ple',g('sessoes ativas'));
+    setK('k-blk',g('sessoes bloqueadas'));
+    setK('k-ddl',g('tablespaces criticas'));
+    setK('k-midx',g('objetos invalidos'));
   } else {
     // KPIs do SQL Server (comportamento original)
     setK('k-hit',g('buffer cache hit ratio'));setK('k-ple',g('page life expectancy'));
@@ -950,6 +1024,16 @@ function renderResumo(){
       {i:'🌐',bg:'rgba(56,189,248,.1)',t:'Conexões Ativas',r:(conx||{val:'—',sts:'OK'}),pg:'conexoes'},
       {i:'🐢',bg:'rgba(232,97,58,.1)',t:'Slow Queries',r:{val:(D.slow||[]).length||'—',sts:(D.slow||[]).some(x=>x.sts!=='OK')?'ATENCAO':'OK'},pg:'slow'},
       {i:'🗑',bg:'rgba(124,92,252,.1)',t:'Índices não usados',r:{val:(D.idxinuteis||[]).length||'—',sts:'OK'},pg:'idxinuteis'},
+    ];
+  } else if (ACTIVE_TIPO === 'oracle') {
+    // Resumo executivo do Oracle — metricas do [22] RESUMO do script Oracle
+    items = [
+      {i:'📊',bg:'rgba(45,217,143,.1)',t:'Cache Hit Ratio',r:g('cache hit ratio'),pg:'memoria'},
+      {i:'🟢',bg:'rgba(56,189,248,.1)',t:'Sessões Ativas',r:g('sessoes ativas'),pg:'conexoes'},
+      {i:'🔒',bg:'rgba(255,77,109,.1)',t:'Sessões Bloqueadas',r:g('sessoes bloqueadas'),pg:'locks'},
+      {i:'💽',bg:'rgba(245,166,35,.1)',t:'Tablespaces Críticas',r:g('tablespaces criticas'),pg:'discos'},
+      {i:'⚠️',bg:'rgba(232,97,58,.1)',t:'Objetos Inválidos',r:g('objetos invalidos'),pg:'config'},
+      {i:'🐢',bg:'rgba(124,92,252,.1)',t:'Slow Queries',r:{val:(D.slow||[]).length||'—',sts:(D.slow||[]).some(x=>x.sts!=='OK')?'ATENCAO':'OK'},pg:'slow'},
     ];
   } else {
     // Resumo executivo do SQL Server (original)

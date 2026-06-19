@@ -218,6 +218,7 @@ textarea:focus{border-color:var(--accent);}
     <div class="ni" onclick="go('backups')"   id="nav-backups">  <span>💾</span>Backups <span class="nb" id="nb-bk">—</span></div>
     <div class="ni" onclick="go('jobs')"      id="nav-jobs">     <span>⚙️</span>Jobs <span class="nb" id="nb-jb">—</span></div>
     <div class="ni" onclick="go('config')"    id="nav-config">   <span>🛠</span>Config <span class="nb" id="nb-cf">—</span></div>
+    <div class="ni" onclick="go('cfgcrit')"   id="nav-cfgcrit"> <span>⚠️</span>Config Críticas <span class="nb" id="nb-cfc">—</span></div>
     <div class="ni" onclick="go('tf')"        id="nav-tf">       <span>🚩</span>Trace Flags</div>
     <div class="ni" onclick="go('counters')"  id="nav-counters"> <span>📈</span>Perf Counters</div>
     <div class="nl" style="color:var(--accent3)">TOTVS Protheus</div>
@@ -430,7 +431,12 @@ textarea:focus{border-color:var(--accent);}
     <div class="tw"><table><thead><tr><th>Configuração</th><th>Valor Atual</th><th>Recomendação</th><th>Status</th></tr></thead><tbody id="tb-cf"></tbody></table></div>
   </div>
 
-  <!-- TRACE FLAGS -->
+  <!-- CONFIG CRITICAS (PostgreSQL) -->
+  <div class="page" id="page-cfgcrit">
+    <div class="sh"><div class="st"><span class="sn">[23]</span><span class="sh2">Configurações Críticas</span></div></div>
+    <p class="sdesc">Parâmetros fora do recomendado, com o valor ideal sugerido. Lista vazia = tudo dentro do esperado.</p>
+    <div class="tw"><table><thead><tr><th>Parâmetro</th><th>Valor Atual</th><th>Recomendação (valor ideal)</th><th>Status</th></tr></thead><tbody id="tb-cfc"></tbody></table></div>
+  </div>
   <div class="page" id="page-tf">
     <div class="sh"><div class="st"><span class="sn">[17]</span><span class="sh2">Trace Flags Ativas</span></div></div>
     <div class="tw"><table><thead><tr><th>Trace Flag</th><th>Status</th><th>Descrição</th></tr></thead><tbody id="tb-tf"></tbody></table></div>
@@ -510,7 +516,7 @@ textarea:focus{border-color:var(--accent);}
 // ── STATE ──
 const D={server:[],databases:[],discos:[],arquivos:[],dbsize:[],tabelas:[],frag:[],
          memoria:[],cpu:[],io:[],waits:[],slow:[],locks:[],lkCnt:[],conexoes:[],
-         midx:[],idxinuteis:[],backups:[],jobs:[],config:[],tf:[],counters:[],
+         midx:[],idxinuteis:[],backups:[],jobs:[],config:[],cfgcrit:[],tf:[],counters:[],
          prot_cfg:[],prot_tbl:[],prot_del:[],prot_heap:[],prot_sts:[],
          prot_midx:[],prot_rec:[],prot_sx2:[],resumo:[]};
 
@@ -527,7 +533,7 @@ const SECOES_POR_SGBD = {
               'backups','jobs','config','tf','counters','protheus','import'],
   postgresql: ['overview','server','databases','arquivos','dbsize','memoria','cpu','io',
                'waits','slow','locks','conexoes','tabelas','idxinuteis','frag',
-               'config','counters','import'],
+               'config','cfgcrit','counters','import'],
   mysql: ['overview','server','databases','dbsize','memoria','cpu','io',
           'waits','slow','locks','conexoes','tabelas','idxinuteis','config','counters','import'],
   oracle: ['overview','server','databases','dbsize','memoria','cpu','io',
@@ -536,7 +542,7 @@ const SECOES_POR_SGBD = {
 
 // Rotulos que mudam conforme o SGBD (quando o conceito tem outro nome)
 const ROTULOS_POR_SGBD = {
-  postgresql: { frag:'Bloat / Vacuum', io:'I/O Stats', counters:'Estatísticas', midx:'Índices' },
+  postgresql: { frag:'Bloat / Vacuum', io:'I/O Stats', counters:'Estatísticas', midx:'Índices', config:'Parâmetros' },
   mysql:      { frag:'Fragmentação', counters:'Status Global' },
   oracle:     { frag:'Fragmentação', counters:'Estatísticas' }
 };
@@ -620,6 +626,7 @@ const PM={overview:{t:'Dashboard',s:'Visão geral'},server:{t:'Server Properties
   idxinuteis:{t:'Índices Inúteis',s:'Sem uso, geram overhead'},
   backups:{t:'Backups',s:'Status por database'},jobs:{t:'Jobs',s:'SQL Agent'},
   config:{t:'Configurações',s:'Parâmetros críticos'},tf:{t:'Trace Flags',s:'Flags ativas'},
+  cfgcrit:{t:'Configurações Críticas',s:'Parâmetros fora do recomendado + valor ideal'},
   counters:{t:'Perf Counters',s:'Contadores de performance'},
   protheus:{t:'Protheus Assessment',s:'TOTVS Protheus — diagnóstico específico'},
   import:{t:'Importar',s:'Cole o resultado do assessment'}};
@@ -783,6 +790,7 @@ function importData(){
     if(sec==='[16] JOBS') D.jobs.push(obj);
     if(sec==='[17] TRACE FLAGS') D.tf.push(obj);
     if(sec==='[18] CONFIG') D.config.push(obj);
+    if(sec==='[23] CONFIG CRITICA') D.cfgcrit.push(obj);
     if(sec==='[19] COUNTERS') D.counters.push(obj);
     if(sec==='[20] INDICES INUTEIS') D.idxinuteis.push(obj);
     if(sec==='[22] RESUMO') D.resumo.push(obj);
@@ -885,7 +893,7 @@ function renderAll(){
   renderResumo();renderServer();renderDatabases();renderDiscos();renderArquivos();
   renderDbSize();renderTabelas();renderFrag();renderMemoria();renderCpu();renderIo();
   renderWaits();renderSlow();renderLocks();renderConexoes();renderMidx();
-  renderIdxInuteis();renderBackups();renderJobs();renderConfig();renderTf();
+  renderIdxInuteis();renderBackups();renderJobs();renderConfig();renderCfgcrit();renderTf();
   renderCounters();renderProtheus();
 }
 
@@ -924,7 +932,7 @@ function renderResumo(){
   const nb=(id,arr,filterFn)=>{const el=document.getElementById(id);if(el)el.textContent=filterFn?arr.filter(filterFn).length||'—':arr.length||'—';};
   nb('nb-wt',D.waits);nb('nb-sl',D.slow);nb('nb-lk',D.locks);nb('nb-mi',D.midx);
   nb('nb-fr',D.frag,r=>r.sts!=='OK');nb('nb-bk',D.backups,r=>r.sts!=='OK');
-  nb('nb-jb',D.jobs,r=>r.sts!=='OK');nb('nb-cf',D.config,r=>r.sts!=='OK');
+  nb('nb-jb',D.jobs,r=>r.sts!=='OK');nb('nb-cf',D.config,r=>r.sts!=='OK');nb('nb-cfc',D.cfgcrit,r=>r.sts!=='OK');
   nb('nb-db',D.databases);nb('nb-dsk',D.discos);nb('nb-cn',D.conexoes);
   nb('nb-io',D.io,r=>r.sts!=='OK');
   const ptTotal=[...D.prot_cfg,...D.prot_tbl,...D.prot_del,...D.prot_heap,...D.prot_sts,...D.prot_midx,...D.prot_rec].filter(r=>r.sts!=='OK').length;
@@ -1368,6 +1376,17 @@ function renderConfig(){
       <td>${bdg(sc(r.sts),sl(r.sts))}</td>
     </tr>`;
   }).join('')||empty(4);
+}
+
+function renderCfgcrit(){
+  const tb=document.getElementById('tb-cfc');
+  if(!tb) return;
+  tb.innerHTML=D.cfgcrit.map(r=>`<tr>
+    <td class="mono" style="color:var(--accent)">${r.met}</td>
+    <td class="mono">${r.val}</td>
+    <td style="font-size:11px;color:var(--muted)">${r.det||'—'}</td>
+    <td>${bdg(sc(r.sts),sl(r.sts))}</td>
+  </tr>`).join('')||`<tr><td colspan="4" class="empty">Nenhum parâmetro fora do recomendado — configuração saudável.</td></tr>`;
 }
 
 function renderTf(){

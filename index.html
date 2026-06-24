@@ -6,6 +6,7 @@
 <title>SQL Server Assessment</title>
 <link href="https://fonts.googleapis.com/css2?family=DM+Mono:wght@400;500&family=Instrument+Serif:ital@0;1&family=DM+Sans:wght@300;400;500;600&display=swap" rel="stylesheet">
 <script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.1/chart.umd.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/pptxgenjs/3.12.0/pptxgen.bundle.js"></script>
 <style>
 :root{
   --bg:#0c0f13;--bg2:#121720;--bg3:#1a2030;
@@ -239,7 +240,7 @@ textarea:focus{border-color:var(--accent);}
     <div class="tb-actions">
       <input class="sbox" type="text" placeholder="Buscar..." id="gs" oninput="doSearch(this.value)">
       <button class="btn btn-ia" onclick="analisarComIA()" title="Copia o prompt de análise e abre o Claude num pop-up para você colar e enviar">🤖 Analisar com IA</button>
-      <button class="btn btn-g" onclick="gerarPDF()" title="Gera um relatório PDF profissional da instância ativa">PDF</button>
+      <button class="btn btn-g" onclick="gerarPPTX()" title="Gera uma apresentação executiva (PowerPoint) da instância ativa">PPTX</button>
       <button class="btn btn-p" onclick="go('import')">+ Importar</button>
     </div>
   </div>
@@ -1664,6 +1665,132 @@ function loadDemo(){
 // ── ANALISAR COM IA (Camada 2 - sob demanda, custo zero) ──
 // Monta um prompt de analise de DBA com os dados da instancia ativa e copia
 // para a area de transferencia, pronto para colar no Claude.ai.
+function gerarPPTX(){
+  if (typeof PptxGenJS === 'undefined'){ toast('Biblioteca de PowerPoint ainda carregando — tente em instantes.'); return; }
+  const nomesSGBD = {sqlserver:'SQL Server', postgresql:'PostgreSQL', mysql:'MySQL', oracle:'Oracle'};
+  const nome = nomesSGBD[ACTIVE_TIPO] || 'Database';
+  const cor  = ({sqlserver:'C8443B',postgresql:'336791',mysql:'E48E00',oracle:'C74634'})[ACTIVE_TIPO] || 'C8443B';
+  const corEsc = '23303A', cinza='7A8893', vermelho='C0392B', laranja='D68910', verde='1E8449';
+
+  // identidade
+  const get = (m)=> (D.server.find(r=>r.met===m)||{}).val;
+  let servidor, versao, instancia, cliente;
+  if (ACTIVE_TIPO==='oracle'){ servidor=get('instance_name')||'-'; versao=get('versao_oracle')||'-'; instancia=get('instance_name')||'-'; }
+  else if (ACTIVE_TIPO==='postgresql'){ servidor=get('hostname_ip')||'-'; versao=get('server_version')||get('versao_postgresql')||'-'; instancia=get('instancia')||'postgres'; }
+  else if (ACTIVE_TIPO==='mysql'){ servidor=get('hostname')||'-'; versao=get('versao_mysql')||get('version')||'-'; instancia=get('instancia')||'mysql'; }
+  else { servidor=get('hostname')||'-'; versao=get('versao_sql_server')||'-'; instancia=get('instancia')||'MSSQLSERVER'; }
+  cliente = (window.ACTIVE_META && window.ACTIVE_META.cliente) || '';
+
+  // coleta criticos e atencao
+  const labels = {
+    server:'Server', databases:'Databases', discos:'Discos/Tablespaces', arquivos:'Arquivos',
+    dbsize:'DB Size', tabelas:'Top Tabelas', frag:'Bloat/Frag', memoria:'Memória', io:'I/O',
+    waits:'Waits', slow:'Slow Queries', midx:'Missing Idx', locks:'Locks', conexoes:'Conexões',
+    backups:'Backups', jobs:'Jobs', tf:'Trace Flags', config:'Parâmetros', cfgcrit:'Config Críticas',
+    counters:'Contadores', idxinuteis:'Índices não usados'
+  };
+  const criticos=[], atencao=[];
+  Object.keys(labels).forEach(k=>{
+    (D[k]||[]).forEach(r=>{
+      const st=(r.sts||'').toUpperCase();
+      const item={sec:labels[k], met:r.met, val:r.val, det:r.det||''};
+      if(st==='CRITICO'||st==='CRÍTICO') criticos.push(item);
+      else if(st==='ATENCAO'||st==='ATENÇÃO'||st==='WARNING'||st==='ALERT') atencao.push(item);
+    });
+  });
+  const resumo = (D.resumo||[]).map(r=>({met:r.met,val:r.val,sts:(r.sts||'OK').toUpperCase()}));
+  const hoje = new Date().toLocaleDateString('pt-BR');
+
+  const pptx = new PptxGenJS();
+  pptx.defineLayout({ name:'W', width:13.33, height:7.5 });
+  pptx.layout = 'W';
+  pptx.author = 'Database Assessment';
+  pptx.company = cliente || 'Assessment';
+
+  // ---------- SLIDE 1: CAPA ----------
+  const s1 = pptx.addSlide();
+  s1.background = { color:'FFFFFF' };
+  s1.addShape(pptx.ShapeType.rect, { x:0, y:0, w:13.33, h:0.35, fill:{color:cor} });
+  s1.addShape(pptx.ShapeType.rect, { x:0, y:7.15, w:13.33, h:0.35, fill:{color:cor} });
+  s1.addText(`${nome} Health Report`, { x:0.8, y:2.3, w:11.7, h:1.0, fontSize:40, bold:true, color:cor, fontFace:'Segoe UI' });
+  s1.addText('Assessment de Banco de Dados — Apresentação Executiva', { x:0.8, y:3.3, w:11.7, h:0.6, fontSize:18, color:cinza, fontFace:'Segoe UI' });
+  const capaInfo = [
+    cliente ? `Cliente:  ${cliente}` : null,
+    `Servidor:  ${servidor}`,
+    `Instância:  ${instancia}`,
+    `Versão:  ${versao}`,
+    `Data:  ${hoje}`
+  ].filter(Boolean).join('\n');
+  s1.addText(capaInfo, { x:0.8, y:4.3, w:8, h:2.0, fontSize:15, color:corEsc, fontFace:'Consolas', lineSpacingMultiple:1.4 });
+  // selo de severidade
+  s1.addShape(pptx.ShapeType.roundRect, { x:9.7, y:4.4, w:2.8, h:1.5, fill:{color:'F8FAFB'}, line:{color:cor,width:1.5}, rectRadius:0.1 });
+  s1.addText([
+    {text:`${criticos.length}`, options:{fontSize:34,bold:true,color:vermelho,breakLine:true}},
+    {text:'itens críticos', options:{fontSize:12,color:cinza}}
+  ], { x:9.7, y:4.5, w:2.8, h:1.3, align:'center', valign:'middle' });
+
+  // ---------- SLIDE 2: DIAGNOSTICO ----------
+  const s2 = pptx.addSlide();
+  s2.background = { color:'FFFFFF' };
+  s2.addText('Diagnóstico — Itens Críticos', { x:0.5, y:0.3, w:12.3, h:0.7, fontSize:26, bold:true, color:cor, fontFace:'Segoe UI' });
+  s2.addShape(pptx.ShapeType.line, { x:0.5, y:1.05, w:12.3, h:0, line:{color:cor,width:2} });
+
+  if (criticos.length){
+    const rows = [[
+      {text:'Área', options:{bold:true,color:'FFFFFF',fill:{color:cor}}},
+      {text:'Item', options:{bold:true,color:'FFFFFF',fill:{color:cor}}},
+      {text:'Situação', options:{bold:true,color:'FFFFFF',fill:{color:cor}}},
+      {text:'Recomendação', options:{bold:true,color:'FFFFFF',fill:{color:cor}}}
+    ]];
+    criticos.slice(0,12).forEach(i=>{
+      rows.push([
+        {text:i.sec, options:{color:cinza,fontSize:11}},
+        {text:String(i.met), options:{color:corEsc,fontSize:11,bold:true}},
+        {text:String(i.val), options:{color:vermelho,fontSize:11}},
+        {text:String(i.det||'—'), options:{color:corEsc,fontSize:10}}
+      ]);
+    });
+    s2.addTable(rows, { x:0.5, y:1.3, w:12.3, colW:[2.2,3.3,2.5,4.3], border:{type:'solid',color:'E2E8ED',pt:0.5}, valign:'middle', autoPage:true, autoPageRepeatHeader:true });
+  } else {
+    s2.addText('Nenhum item crítico identificado nesta instância. ✓', { x:0.5, y:3, w:12.3, h:1, fontSize:18, color:verde, align:'center' });
+  }
+
+  // ---------- SLIDE 3: PROXIMOS PASSOS ----------
+  const s3 = pptx.addSlide();
+  s3.background = { color:'FFFFFF' };
+  s3.addText('Próximos Passos — Onde Vamos Trabalhar', { x:0.5, y:0.3, w:12.3, h:0.7, fontSize:26, bold:true, color:cor, fontFace:'Segoe UI' });
+  s3.addShape(pptx.ShapeType.line, { x:0.5, y:1.05, w:12.3, h:0, line:{color:cor,width:2} });
+
+  // monta plano: criticos viram acoes prioritarias; atencao vira acompanhamento
+  const passos = [];
+  criticos.slice(0,5).forEach((i,idx)=>{
+    passos.push({n:idx+1, prio:'Prioridade Alta', cor:vermelho, txt:`${i.sec}: ${i.met}`, sub:i.det||`Resolver: ${i.val}`});
+  });
+  atencao.slice(0, Math.max(0, 6-passos.length)).forEach((i,idx)=>{
+    passos.push({n:passos.length+1, prio:'Acompanhar', cor:laranja, txt:`${i.sec}: ${i.met}`, sub:i.det||`Avaliar: ${i.val}`});
+  });
+  if (!passos.length){
+    s3.addText('Ambiente saudável — sem ações prioritárias no momento. Manter monitoramento periódico.', { x:0.5, y:3, w:12.3, h:1, fontSize:18, color:verde, align:'center' });
+  } else {
+    let yy = 1.35;
+    passos.forEach(p=>{
+      s3.addShape(pptx.ShapeType.roundRect, { x:0.5, y:yy, w:12.3, h:0.85, fill:{color:'F8FAFB'}, line:{color:'E2E8ED',width:0.5}, rectRadius:0.06 });
+      s3.addShape(pptx.ShapeType.ellipse, { x:0.7, y:yy+0.2, w:0.45, h:0.45, fill:{color:p.cor} });
+      s3.addText(String(p.n), { x:0.7, y:yy+0.2, w:0.45, h:0.45, align:'center', valign:'middle', fontSize:16, bold:true, color:'FFFFFF' });
+      s3.addText([
+        {text:p.txt+'  ', options:{fontSize:13,bold:true,color:corEsc}},
+        {text:p.prio, options:{fontSize:9,bold:true,color:p.cor}}
+      ], { x:1.4, y:yy+0.08, w:11.2, h:0.35 });
+      s3.addText(String(p.sub).slice(0,140), { x:1.4, y:yy+0.42, w:11.2, h:0.35, fontSize:10, color:cinza });
+      yy += 0.98;
+    });
+  }
+  s3.addText(`Relatório gerado em ${hoje} · ${nome} · ${servidor}`, { x:0.5, y:7.0, w:12.3, h:0.3, fontSize:9, color:cinza, align:'center' });
+
+  const fname = `Assessment_${nome}_${(servidor||'inst').replace(/[^a-zA-Z0-9]/g,'_')}_${hoje.replace(/\//g,'-')}.pptx`;
+  pptx.writeFile({ fileName: fname }).then(()=> toast('Apresentação PowerPoint gerada!')).catch(e=>{ console.error(e); toast('Falha ao gerar o PPTX.'); });
+}
+
 function gerarPDF(){
   const nomesSGBD = {sqlserver:'SQL Server', postgresql:'PostgreSQL', mysql:'MySQL', oracle:'Oracle'};
   const nome = nomesSGBD[ACTIVE_TIPO] || 'Database';

@@ -1765,7 +1765,7 @@ function _gerarPPTX(){
   const s2 = pptx.addSlide();
   s2.background = { color:'FFFFFF' };
   s2.addText('Diagnóstico — Itens Críticos', { x:0.5, y:0.3, w:12.3, h:0.7, fontSize:26, bold:true, color:cor, fontFace:'Segoe UI' });
-  s2.addShape(pptx.ShapeType.line, { x:0.5, y:1.05, w:12.3, h:0, line:{color:cor,width:2} });
+  s2.addShape(pptx.ShapeType.line, { x:0.5, y:1.05, w:12.3, h:0.01, line:{color:cor,width:2} });
 
   if (criticos.length){
     const rows = [[
@@ -1791,7 +1791,7 @@ function _gerarPPTX(){
   const s3 = pptx.addSlide();
   s3.background = { color:'FFFFFF' };
   s3.addText('Próximos Passos — Onde Vamos Trabalhar', { x:0.5, y:0.3, w:12.3, h:0.7, fontSize:26, bold:true, color:cor, fontFace:'Segoe UI' });
-  s3.addShape(pptx.ShapeType.line, { x:0.5, y:1.05, w:12.3, h:0, line:{color:cor,width:2} });
+  s3.addShape(pptx.ShapeType.line, { x:0.5, y:1.05, w:12.3, h:0.01, line:{color:cor,width:2} });
 
   // monta plano: criticos viram acoes prioritarias; atencao vira acompanhamento
   const passos = [];
@@ -1819,7 +1819,7 @@ function _gerarPPTX(){
   }
   s3.addText(`Relatório gerado em ${hoje} · ${nome} · ${servidor}`, { x:0.5, y:7.0, w:12.3, h:0.3, fontSize:9, color:cinza, align:'center' });
 
-  const fname = `Assessment_${nome}_${(servidor||'inst').replace(/[^a-zA-Z0-9]/g,'_')}_${hoje.replace(/\//g,'-')}.pptx`;
+  const fname = `Assessment_${nome.replace(/\s+/g,'')}_${(servidor||'inst').replace(/[^a-zA-Z0-9]/g,'_')}_${hoje.replace(/\//g,'-')}.pptx`;
   pptx.writeFile({ fileName: fname }).then(()=> toast('Apresentação PowerPoint gerada!')).catch(e=>{ console.error(e); toast('Falha ao gerar o PPTX.'); });
 }
 

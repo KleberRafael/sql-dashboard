@@ -27,6 +27,7 @@ body::before{content:'';position:fixed;inset:0;background-image:linear-gradient(
 .sb-logo .eye{font-family:'DM Mono',monospace;font-size:10px;letter-spacing:.12em;text-transform:uppercase;color:var(--accent);margin-bottom:5px;}
 .sb-logo h2{font-family:'Instrument Serif',serif;font-size:16px;font-weight:400;color:#fff;line-height:1.25;}
 .sb-logo h2 em{font-style:italic;color:var(--accent);}
+.sb-logo .sb-cliente{margin-top:8px;padding:5px 10px;background:var(--accent);color:#fff;border-radius:5px;font-family:'DM Mono',monospace;font-size:12px;font-weight:700;letter-spacing:.04em;text-align:center;text-transform:uppercase;}
 .srv-chip{margin-top:9px;background:var(--bg3);border:1px solid var(--border2);border-radius:7px;padding:7px 11px;}
 .srv-chip .sh{font-family:'DM Mono',monospace;font-size:11px;color:var(--text);display:flex;align-items:center;gap:5px;}
 .srv-chip .sh::before{content:'';width:6px;height:6px;border-radius:50%;background:var(--ok);display:inline-block;flex-shrink:0;animation:pulse 2s infinite;}
@@ -186,6 +187,7 @@ textarea:focus{border-color:var(--accent);}
   <div class="sb-logo">
     <div class="eye" id="sb-eye">SQL Server Assessment</div>
     <h2 id="sb-title"><em>SQL Server</em><br>Health Report</h2>
+    <div class="sb-cliente" id="sb-cliente" style="display:none"></div>
     <div class="srv-chip">
       <div class="sh" id="s-host">demo-server</div>
       <div class="sv" id="s-ver">SQL Server —</div>
@@ -548,6 +550,19 @@ const ROTULOS_POR_SGBD = {
 };
 
 // Aplica a "roupagem" do SGBD: mostra/esconde itens do menu e ajusta rotulos
+function atualizarClienteNoTitulo(cliente){
+  const el = document.getElementById('sb-cliente');
+  if(!el) return;
+  const nome = (cliente||'').trim();
+  // nao mostra placeholder generico
+  if(nome && nome.toUpperCase() !== 'NOME_DO_CLIENTE' && nome !== '(sem cliente)'){
+    el.textContent = nome;
+    el.style.display = '';
+  } else {
+    el.style.display = 'none';
+  }
+}
+
 function aplicarRoupagemSGBD(tipo){
   ACTIVE_TIPO = (tipo || 'sqlserver').toLowerCase();
   const visiveis = SECOES_POR_SGBD[ACTIVE_TIPO] || SECOES_POR_SGBD.sqlserver;
@@ -2082,7 +2097,15 @@ function loadInstance(file){
       document.getElementById('idata').value = tsv;
       importData();
       const meta = rows[0] || {};
-      window.ACTIVE_META = meta;
+      // captura o cliente de forma robusta: usa o primeiro registro que tiver um cliente valido
+      const rowComCliente = rows.find(r => r.cliente && r.cliente.trim() && r.cliente !== 'NOME_DO_CLIENTE') || meta;
+      window.ACTIVE_META = {
+        cliente: rowComCliente.cliente || meta.cliente || '',
+        servidor: meta.servidor || '',
+        instancia: meta.instancia || ''
+      };
+      // atualiza o titulo com o nome do cliente
+      atualizarClienteNoTitulo(window.ACTIVE_META.cliente);
       document.getElementById('imp-st').textContent =
         'Instancia: ' + (meta.cliente||'?') + ' / ' + (meta.servidor||'?') + ' — ' +
         new Date().toLocaleString('pt-BR');

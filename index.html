@@ -6,7 +6,6 @@
 <title>SQL Server Assessment</title>
 <link href="https://fonts.googleapis.com/css2?family=DM+Mono:wght@400;500&family=Instrument+Serif:ital@0;1&family=DM+Sans:wght@300;400;500;600&display=swap" rel="stylesheet">
 <script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.1/chart.umd.min.js"></script>
-<script src="https://cdnjs.cloudflare.com/ajax/libs/pptxgenjs/3.12.0/pptxgen.bundle.js"></script>
 <style>
 :root{
   --bg:#0c0f13;--bg2:#121720;--bg3:#1a2030;
@@ -1665,8 +1664,41 @@ function loadDemo(){
 // ── ANALISAR COM IA (Camada 2 - sob demanda, custo zero) ──
 // Monta um prompt de analise de DBA com os dados da instancia ativa e copia
 // para a area de transferencia, pronto para colar no Claude.ai.
+// carrega o PptxGenJS sob demanda, tentando varias CDNs ate uma funcionar
+function carregarPptxGenJS(){
+  if (typeof PptxGenJS !== 'undefined') return Promise.resolve();
+  if (window.__pptxLoading) return window.__pptxLoading;
+  const urls = [
+    'pptxgen.bundle.js',   // local, do proprio GitHub Pages (mesma origem, sem firewall externo)
+    'https://cdn.jsdelivr.net/npm/pptxgenjs@3.12.0/dist/pptxgen.bundle.js',
+    'https://unpkg.com/pptxgenjs@3.12.0/dist/pptxgen.bundle.js',
+    'https://cdnjs.cloudflare.com/ajax/libs/pptxgenjs/3.12.0/pptxgen.bundle.min.js'
+  ];
+  window.__pptxLoading = new Promise((resolve, reject)=>{
+    let i = 0;
+    const tryNext = ()=>{
+      if (typeof PptxGenJS !== 'undefined') return resolve();
+      if (i >= urls.length) return reject(new Error('Nenhuma CDN funcionou'));
+      const s = document.createElement('script');
+      s.src = urls[i++];
+      s.onload = ()=> (typeof PptxGenJS !== 'undefined') ? resolve() : tryNext();
+      s.onerror = ()=> tryNext();
+      document.head.appendChild(s);
+    };
+    tryNext();
+  });
+  return window.__pptxLoading;
+}
+
 function gerarPPTX(){
-  if (typeof PptxGenJS === 'undefined'){ toast('Biblioteca de PowerPoint ainda carregando — tente em instantes.'); return; }
+  toast('Preparando a apresentação…');
+  carregarPptxGenJS()
+    .then(()=> _gerarPPTX())
+    .catch(()=> toast('Não foi possível carregar a biblioteca de PowerPoint. Verifique a conexão.'));
+}
+
+function _gerarPPTX(){
+  if (typeof PptxGenJS === 'undefined'){ toast('Biblioteca de PowerPoint indisponível.'); return; }
   const nomesSGBD = {sqlserver:'SQL Server', postgresql:'PostgreSQL', mysql:'MySQL', oracle:'Oracle'};
   const nome = nomesSGBD[ACTIVE_TIPO] || 'Database';
   const cor  = ({sqlserver:'C8443B',postgresql:'336791',mysql:'E48E00',oracle:'C74634'})[ACTIVE_TIPO] || 'C8443B';

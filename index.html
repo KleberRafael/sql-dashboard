@@ -240,7 +240,7 @@ textarea:focus{border-color:var(--accent);}
     <div class="tb-chip" id="tb-chip">demo-server | SQL Server —</div>
     <div class="tb-actions">
       <input class="sbox" type="text" placeholder="Buscar..." id="gs" oninput="doSearch(this.value)">
-      <button class="btn btn-ia" onclick="analisarComIA()" title="Copia o prompt de análise e abre o Claude num pop-up para você colar e enviar">🤖 Analisar com IA</button>
+      <button class="btn btn-ia" onclick="analisarComIA()" title="Copia o prompt de análise e abre o ChatGPT num pop-up para você colar e enviar">🤖 Analisar com IA</button>
       <button class="btn btn-g" onclick="gerarPPTX()" title="Gera uma apresentação executiva (PowerPoint) da instância ativa">PPTX</button>
       <button class="btn btn-p" onclick="go('import')">+ Importar</button>
     </div>
@@ -1678,7 +1678,7 @@ function loadDemo(){
 
 // ── ANALISAR COM IA (Camada 2 - sob demanda, custo zero) ──
 // Monta um prompt de analise de DBA com os dados da instancia ativa e copia
-// para a area de transferencia, pronto para colar no Claude.ai.
+// para a area de transferencia, pronto para colar no ChatGPT.
 // carrega o PptxGenJS sob demanda, tentando varias CDNs ate uma funcionar
 function carregarPptxGenJS(){
   if (typeof PptxGenJS !== 'undefined') return Promise.resolve();
@@ -2043,28 +2043,28 @@ O QUE PRECISO
 
 Seja específico e direto. Assuma que quem lê é um DBA experiente que valida tudo antes de aplicar.`;
 
-  // copia para a area de transferencia e abre o Claude.ai num pop-up
-  const abrirClaudePopup = () => {
+  // copia para a area de transferencia e abre o ChatGPT num pop-up
+  const abrirIAPopup = () => {
     const w = 520, h = 720;
     const left = (screen.width  - w) / 2;
     const top  = (screen.height - h) / 2;
-    const win = window.open('https://claude.ai/new', 'claude_ia',
+    const win = window.open('https://chatgpt.com/', 'ia_analise',
       `popup=yes,width=${w},height=${h},left=${left},top=${top},resizable=yes,scrollbars=yes`);
     if (!win) {
       // pop-up bloqueado pelo navegador
-      toast('Prompt copiado! Permita pop-ups para abrir o Claude, ou cole em claude.ai (Ctrl+V).');
+      toast('Prompt copiado! Permita pop-ups para abrir o ChatGPT, ou cole no ChatGPT (Ctrl+V).');
     }
   };
 
   navigator.clipboard.writeText(prompt).then(()=>{
-    toast('Prompt copiado! Abrindo o Claude — é só colar (Ctrl+V) e enviar.');
-    abrirClaudePopup();
+    toast('Prompt copiado! Abrindo o ChatGPT — é só colar (Ctrl+V) e enviar.');
+    abrirIAPopup();
   }).catch(()=>{
     // fallback se clipboard bloqueado: mostra numa textarea para copiar manual
     const ta = document.getElementById('idata');
     if(ta){ go('import'); ta.value = prompt; ta.focus(); ta.select();
-      toast('Prompt gerado na aba Importar — copie (Ctrl+A, Ctrl+C) e cole no Claude.'); }
-    abrirClaudePopup();
+      toast('Prompt gerado na aba Importar — copie (Ctrl+A, Ctrl+C) e cole no ChatGPT.'); }
+    abrirIAPopup();
   });
 }
 

@@ -1749,8 +1749,7 @@ function _gerarPPTX(){
   const hoje = new Date().toLocaleDateString('pt-BR');
 
   const pptx = new PptxGenJS();
-  pptx.defineLayout({ name:'W', width:13.33, height:7.5 });
-  pptx.layout = 'W';
+  pptx.layout = 'LAYOUT_WIDE';
   pptx.author = 'Database Assessment';
   pptx.company = cliente || 'Assessment';
 
@@ -1797,7 +1796,7 @@ function _gerarPPTX(){
         {text:String(i.det||'—'), options:{color:corEsc,fontSize:10}}
       ]);
     });
-    s2.addTable(rows, { x:0.5, y:1.3, w:12.3, colW:[2.2,3.3,2.5,4.3], border:{type:'solid',color:'E2E8ED',pt:0.5}, valign:'middle', autoPage:true, autoPageRepeatHeader:true });
+    s2.addTable(rows, { x:0.5, y:1.3, w:12.3, colW:[2.2,3.3,2.5,4.3], border:{type:'solid',color:'E2E8ED',pt:0.5}, valign:'middle' });
   } else {
     s2.addText('Nenhum item crítico identificado nesta instância. ✓', { x:0.5, y:3, w:12.3, h:1, fontSize:18, color:verde, align:'center' });
   }

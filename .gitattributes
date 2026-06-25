@@ -1,0 +1,3 @@
+pptxgen.bundle.js -text
+pptxgen.bundle.js binary
+*.bundle.js -text

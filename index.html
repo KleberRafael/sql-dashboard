@@ -1788,15 +1788,21 @@ function _gerarPPTX(){
       {text:'Situação', options:{bold:true,color:'FFFFFF',fill:{color:cor}}},
       {text:'Recomendação', options:{bold:true,color:'FFFFFF',fill:{color:cor}}}
     ]];
-    criticos.slice(0,12).forEach(i=>{
+    const MAX_LINHAS = 11;
+    criticos.slice(0,MAX_LINHAS).forEach(i=>{
       rows.push([
-        {text:i.sec, options:{color:cinza,fontSize:11}},
-        {text:String(i.met), options:{color:corEsc,fontSize:11,bold:true}},
-        {text:String(i.val), options:{color:vermelho,fontSize:11}},
-        {text:String(i.det||'—'), options:{color:corEsc,fontSize:10}}
+        {text:String(i.sec).slice(0,40), options:{color:cinza,fontSize:11}},
+        {text:String(i.met).slice(0,60), options:{color:corEsc,fontSize:11,bold:true}},
+        {text:String(i.val).slice(0,40), options:{color:vermelho,fontSize:11}},
+        {text:String(i.det||'—').slice(0,90), options:{color:corEsc,fontSize:10}}
       ]);
     });
-    s2.addTable(rows, { x:0.5, y:1.3, w:12.3, colW:[2.2,3.3,2.5,4.3], border:{type:'solid',color:'E2E8ED',pt:0.5}, valign:'middle' });
+    if (criticos.length > MAX_LINHAS){
+      rows.push([
+        {text:`+ ${criticos.length-MAX_LINHAS} outros itens críticos`, options:{color:cinza,fontSize:10,italic:true,colspan:4,align:'center',fill:{color:'F8FAFB'}}}
+      ]);
+    }
+    s2.addTable(rows, { x:0.5, y:1.3, w:12.3, colW:[2.2,3.3,2.5,4.3], rowH:0.4, border:{type:'solid',color:'E2E8ED',pt:0.5}, valign:'middle', autoPage:false });
   } else {
     s2.addText('Nenhum item crítico identificado nesta instância. ✓', { x:0.5, y:3, w:12.3, h:1, fontSize:18, color:verde, align:'center' });
   }

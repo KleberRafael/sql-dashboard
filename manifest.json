@@ -1,5 +1,14 @@
 [
     {
+        "slug":  "BRADESCO-BR-MZ-VV-BD-03B-SQLPRD12",
+        "cliente":  "BRADESCO",
+        "servidor":  "BR-MZ-VV-BD-03B",
+        "instancia":  "SQLPRD12",
+        "tipo":  "sqlserver",
+        "file":  "data-BRADESCO-BR-MZ-VV-BD-03B-SQLPRD12.json",
+        "atualizado":  "2026-10-09 15:05:09"
+    },
+    {
         "slug":  "C_A-DB178-MSSQLSERVER",
         "cliente":  "C\u0026A",
         "servidor":  "DB178",
